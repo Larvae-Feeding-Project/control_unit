@@ -1,12 +1,12 @@
 # Control System
 
 This repo contains our implementation of the control system. 
-It includes the control_unit module and the UI.
+It includes the control_unit module, UI and logo.
 
 ## Dependencies - nees update
 
 1. PySide6
-2. 
+2. enum
 
 ## Utils - nees update
 Utils can be found in the movement_utils folder. They can be used for calibration, introduction of new commands and more. The current utils are:
