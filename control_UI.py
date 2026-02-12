@@ -2,36 +2,32 @@ import sys
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QHBoxLayout, QGridLayout, QPushButton, QLabel,
                                QListWidget, QListWidgetItem, QDateTimeEdit,
-                               QSlider, QProgressBar, QFrame, QScrollArea,
-                               QSizePolicy)
+                               QSlider, QFrame, QScrollArea)
 from PySide6.QtCore import Qt, QDateTime
 from PySide6.QtGui import QColor
 
 
 # ============================================================================
-# 1. LOGIC CONTROLLER (THE BRAIN)
+# 1. LOGIC CONTROLLER
 # ============================================================================
 class RobotBackend:
-    """
-    Same backend logic as before.
-    """
-
     def __init__(self):
         self.scheduled_feeds = []
 
     def handle_well_click(self, plate_id, row, col, current_state):
         print(f"[LOGIC] Cell clicked: Plate {plate_id}, Row {row}, Col {col}")
-        if current_state == "empty":
-            return "selected"
-        elif current_state == "selected":
-            return "fed"
+        # Cycle through states: Disabled -> Manual -> Calculated -> Disabled
+        if current_state == "disabled":
+            return "manual"
+        elif current_state == "manual":
+            return "calculated"
         else:
-            return "empty"
+            return "disabled"
 
     def schedule_feed(self, datetime_obj, percentage):
         time_str = datetime_obj.toString("yyyy-MM-dd HH:mm")
         print(f"[LOGIC] Scheduled feed for {time_str} at {percentage}% flow.")
-        return f"{time_str} - {percentage}% Intensity"
+        return f"{time_str} - {percentage}% of the larvae volume"
 
 
 # ============================================================================
@@ -46,33 +42,26 @@ class LarvaWell(QPushButton):
         self.row = row
         self.col = col
         self.backend = backend
-        self.state = "empty"
+        self.state = "disabled"
 
-        # Force styling to ensure visibility regardless of system theme
-        self.setStyleSheet("""
-            QPushButton {
-                background-color: #e0e0e0;
-                border-radius: 12px;
-                border: 1px solid #bdc3c7;
-            }
-            QPushButton:hover {
-                background-color: #d6eaf8;
-            }
-        """)
         self.clicked.connect(self.on_click)
+        self.update_color()
 
     def on_click(self):
         new_state = self.backend.handle_well_click(self.plate_id, self.row, self.col, self.state)
+        self.set_state(new_state)
+
+    def set_state(self, new_state):
         self.state = new_state
         self.update_color()
 
     def update_color(self):
-        if self.state == "selected":
+        if self.state == "manual":
             color = "#f39c12"  # Orange
-        elif self.state == "fed":
-            color = "#27ae60"  # Green
+        elif self.state == "calculated":
+            color = "#3498db"  # Blue
         else:
-            color = "#e0e0e0"  # Grey
+            color = "#bdc3c7"  # Grey (Disabled)
 
         self.setStyleSheet(f"""
             QPushButton {{
@@ -86,28 +75,74 @@ class LarvaWell(QPushButton):
 class LarvaPlate(QFrame):
     def __init__(self, plate_id, backend, rows, columns):
         super().__init__()
-        self.rows, self.cols = rows, columns
+        self.rows = rows
+        self.cols = columns
         self.setFrameShape(QFrame.StyledPanel)
-        # Added explicit color for the label text inside the frame
         self.setStyleSheet("""
             QFrame {
                 background-color: #ffffff; 
                 border-radius: 10px; 
                 border: 1px solid #ccc;
             }
-            QLabel {
-                color: #333333;
-                font-weight: bold;
-                border: none;
-            }
         """)
 
+        # Main Vertical Layout for the Plate
         layout = QVBoxLayout()
 
-        title = QLabel(f"Matrix #{plate_id}")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        # --- HEADER (Title + 3 Local Control Buttons) ---
+        header_layout = QHBoxLayout()
 
+        # Title
+        title = QLabel(f"Matrix #{plate_id}")
+        title.setStyleSheet("color: #333333; font-weight: bold; border: none; font-size: 14px;")
+
+        # Button Container (to keep them grouped tightly on the right)
+        btn_box = QHBoxLayout()
+        btn_box.setSpacing(5)
+
+        # 1. Local Calculated Button
+        btn_calc = QPushButton("Calc")
+        btn_calc.setFixedSize(50, 25)
+        btn_calc.setCursor(Qt.PointingHandCursor)
+        btn_calc.setStyleSheet("""
+            QPushButton { background-color: #3498db; color: white; border-radius: 4px; border: none; font-weight: bold; font-size: 11px;}
+            QPushButton:hover { background-color: #2980b9; }
+        """)
+        btn_calc.clicked.connect(lambda: self.set_plate_state("calculated"))
+
+        # 2. Local Manual Button
+        btn_man = QPushButton("Man")
+        btn_man.setFixedSize(50, 25)
+        btn_man.setCursor(Qt.PointingHandCursor)
+        btn_man.setStyleSheet("""
+            QPushButton { background-color: #f39c12; color: white; border-radius: 4px; border: none; font-weight: bold; font-size: 11px;}
+            QPushButton:hover { background-color: #e67e22; }
+        """)
+        btn_man.clicked.connect(lambda: self.set_plate_state("manual"))
+
+        # 3. Local Disable Button
+        btn_dis = QPushButton("Dis")
+        btn_dis.setFixedSize(50, 25)
+        btn_dis.setCursor(Qt.PointingHandCursor)
+        btn_dis.setStyleSheet("""
+            QPushButton { background-color: #bdc3c7; color: black; border-radius: 4px; border: none; font-weight: bold; font-size: 11px;}
+            QPushButton:hover { background-color: #95a5a6; }
+        """)
+        btn_dis.clicked.connect(lambda: self.set_plate_state("disabled"))
+
+        # Add buttons to the box
+        btn_box.addWidget(btn_calc)
+        btn_box.addWidget(btn_man)
+        btn_box.addWidget(btn_dis)
+
+        # Assemble Header
+        header_layout.addWidget(title)
+        header_layout.addStretch()  # Pushes buttons to the right
+        header_layout.addLayout(btn_box)
+
+        layout.addLayout(header_layout)
+
+        # --- GRID ---
         grid_layout = QGridLayout()
         grid_layout.setSpacing(4)
 
@@ -119,26 +154,24 @@ class LarvaPlate(QFrame):
         layout.addLayout(grid_layout)
         self.setLayout(layout)
 
+    def set_plate_state(self, new_state):
+        """Sets the state for ALL wells in THIS plate only."""
+        print(f"[UI] Matrix Local Override: Setting all to {new_state}")
+        for well in self.findChildren(LarvaWell):
+            well.set_state(new_state)
+
 
 class ControlPanel(QFrame):
-    def __init__(self, backend, list_widget):
+    def __init__(self, backend, list_widget, plates):
         super().__init__()
         self.backend = backend
         self.list_widget = list_widget
+        self.plates = plates
 
         self.setFrameShape(QFrame.StyledPanel)
-
-        # FIX: Explicitly set text color (color: #333333) so it's visible
-        # on the light background (#f4f6f7)
         self.setStyleSheet("""
-            QFrame {
-                background-color: #f4f6f7; 
-                border-radius: 10px;
-            }
-            QLabel {
-                color: #333333;
-                font-size: 14px;
-            }
+            QFrame { background-color: #f4f6f7; border-radius: 10px; }
+            QLabel { color: #333333; font-size: 14px; }
         """)
 
         layout = QVBoxLayout()
@@ -146,12 +179,11 @@ class ControlPanel(QFrame):
 
         # 1. Slider
         slider_layout = QVBoxLayout()
-        self.lbl_percent = QLabel("Feed Intensity: 50%")
+        self.lbl_percent = QLabel("Feed percentage: 50%")
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setRange(0, 100)
         self.slider.setValue(50)
-        self.slider.valueChanged.connect(lambda v: self.lbl_percent.setText(f"Feed Intensity: {v}%"))
-
+        self.slider.valueChanged.connect(lambda v: self.lbl_percent.setText(f"Feed percentage: {v}%"))
         slider_layout.addWidget(self.lbl_percent)
         slider_layout.addWidget(self.slider)
 
@@ -161,24 +193,42 @@ class ControlPanel(QFrame):
         self.dt_edit = QDateTimeEdit(QDateTime.currentDateTime())
         self.dt_edit.setDisplayFormat("yyyy-MM-dd HH:mm")
         self.dt_edit.setCalendarPopup(True)
-        # Fix text color for the input box specifically
         self.dt_edit.setStyleSheet("color: #333333; background-color: white;")
-
         dt_layout.addWidget(lbl_time)
         dt_layout.addWidget(self.dt_edit)
 
-        # 3. Button
+        # 3. Add to Schedule Button
         self.btn_schedule = QPushButton("Add to Schedule")
         self.btn_schedule.setMinimumHeight(40)
         self.btn_schedule.setStyleSheet("""
-            QPushButton { background-color: #3498db; color: white; border-radius: 5px; font-weight: bold; }
-            QPushButton:hover { background-color: #2980b9; }
+            QPushButton { background-color: #34495e; color: white; border-radius: 5px; font-weight: bold; }
+            QPushButton:hover { background-color: #2c3e50; }
         """)
         self.btn_schedule.clicked.connect(self.add_schedule)
 
-        layout.addLayout(slider_layout)
+
+        button_layout = QHBoxLayout()
+
+        self.btn_calc = QPushButton("All Calc")
+        self.btn_calc.setStyleSheet("background-color: #3498db; color: white; padding: 5px; border-radius: 4px;")
+        self.btn_calc.clicked.connect(lambda: self.change_all("calculated"))
+
+        self.btn_man = QPushButton("All Manual")
+        self.btn_man.setStyleSheet("background-color: #f39c12; color: white; padding: 5px; border-radius: 4px;")
+        self.btn_man.clicked.connect(lambda: self.change_all("manual"))
+
+        self.btn_dis = QPushButton("All Disable")
+        self.btn_dis.setStyleSheet("background-color: #bdc3c7; color: black; padding: 5px; border-radius: 4px;")
+        self.btn_dis.clicked.connect(lambda: self.change_all("disabled"))
+
+        button_layout.addWidget(self.btn_calc)
+        button_layout.addWidget(self.btn_man)
+        button_layout.addWidget(self.btn_dis)
+
         layout.addLayout(dt_layout)
         layout.addWidget(self.btn_schedule)
+        layout.addLayout(slider_layout)
+        layout.addLayout(button_layout)
         layout.addStretch()
 
         self.setLayout(layout)
@@ -186,9 +236,13 @@ class ControlPanel(QFrame):
     def add_schedule(self):
         result_text = self.backend.schedule_feed(self.dt_edit.dateTime(), self.slider.value())
         item = QListWidgetItem(result_text)
-        # Ensure list items are also visible
         item.setForeground(QColor("#333333"))
         self.list_widget.addItem(item)
+
+    def change_all(self, new_state):
+        for plate in self.plates:
+            # Re-use the method we just wrote in LarvaPlate
+            plate.set_plate_state(new_state)
 
 
 # ============================================================================
@@ -199,7 +253,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ARIS - Larvae Feeding Control")
-        self.resize(1000, 700)  # Slightly taller default size
+        self.resize(1100, 800)
 
         self.backend = RobotBackend()
 
@@ -209,18 +263,16 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
 
         # --- LEFT COLUMN (SCROLLABLE) ---
-        # 1. Create a Scroll Area
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # Only scroll vertically
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setStyleSheet("border: none; background-color: transparent;")
 
-        # 2. Create a container widget to go INSIDE the scroll area
         left_container = QWidget()
-        # FIX: Changed to QVBoxLayout (Vertical) instead of HBox
         left_layout = QVBoxLayout()
-        left_layout.setSpacing(15)  # Space between matrices
+        left_layout.setSpacing(15)
 
+        # Create Plates
         self.plate1 = LarvaPlate(1, self.backend, 6, 8)
         self.plate2 = LarvaPlate(2, self.backend, 4, 6)
         self.plate3 = LarvaPlate(3, self.backend, 4, 6)
@@ -229,21 +281,17 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(self.plate2)
         left_layout.addWidget(self.plate3)
         left_container.setLayout(left_layout)
-
-        # 3. Set the container as the scroll area's widget
         scroll_area.setWidget(left_container)
 
         # --- RIGHT COLUMN ---
         self.schedule_list = QListWidget()
-        self.schedule_list.setStyleSheet("""
-            QListWidget { background-color: white; border-radius: 10px; border: 1px solid #ccc; color: #333; }
-        """)
+        self.schedule_list.setStyleSheet(
+            "background-color: white; border-radius: 10px; border: 1px solid #ccc; color: #333;")
 
         # --- MIDDLE COLUMN ---
-        self.controls = ControlPanel(self.backend, self.schedule_list)
+        self.controls = ControlPanel(self.backend, self.schedule_list, [self.plate1, self.plate2, self.plate3])
 
         # Add to Main Layout
-        # Notice we add 'scroll_area' instead of 'left_container' directly
         main_layout.addWidget(scroll_area, 4)
         main_layout.addWidget(self.controls, 3)
         main_layout.addWidget(self.schedule_list, 3)
