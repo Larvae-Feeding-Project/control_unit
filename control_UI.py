@@ -9,7 +9,7 @@ from PySide6.QtGui import QColor, QIcon, QAction
 from enum import Enum
 
 # ============================================================================
-# 1. LOGIC CONTROLLER
+# UI BACKEND (Includes scheduler logic)
 # ============================================================================
 class RobotBackend(QObject):  # Inherit from QObject to use Signals & Timers
     # Signal to tell the UI to remove an item visually when it executes
@@ -18,12 +18,11 @@ class RobotBackend(QObject):  # Inherit from QObject to use Signals & Timers
     def __init__(self):
         super().__init__()
         self.scheduled_feeds = []  # Will store: {'id': uuid, 'time': dt, 'percent': 50, 'snapshot': [...]}
-
+        self.feed_identifier = 1
         # --- TIMING MECHANISM ---
         self.timer = QTimer()
         self.timer.timeout.connect(self.check_schedule)
         self.timer.start(1000)  # Check every 1 second
-
 
     def schedule_feed(self, datetime_obj, percentage, snapshot_data):
         """
@@ -31,7 +30,8 @@ class RobotBackend(QObject):  # Inherit from QObject to use Signals & Timers
         Saves them together as one distinct task.
         """
         # Create a unique ID for this specific task
-        task_id = str(uuid.uuid4())
+        task_id = self.feed_identifier
+        self.feed_identifier += 1
 
         feed_task = {
             'id': task_id,
@@ -46,7 +46,7 @@ class RobotBackend(QObject):  # Inherit from QObject to use Signals & Timers
         self.scheduled_feeds.sort(key=lambda x: x['time'])
 
         time_str = datetime_obj.toString("yyyy-MM-dd HH:mm")
-        print(f"[LOGIC] Scheduled Feed {task_id[:8]}... for {time_str}")
+        print(f"[LOGIC] Scheduled Feed {task_id}... for {time_str}")
 
         # Return the ID so the UI can attach it to the list item
         display_text = f"{time_str} - {percentage}% of the larvae volume"
@@ -103,6 +103,7 @@ class WellState(Enum):
 
     def next(self):
         return WellState((self.value + 1) % len(WellState))
+
 
 class LarvaWell(QPushButton):
     def __init__(self, plate_id, row, col, backend):
@@ -251,6 +252,9 @@ class LarvaPlate(QFrame):
 
 
 class ControlPanel(QFrame):
+    """
+    Create the middle panel of the window, which consists of the main buttons
+    """
     def __init__(self, backend, list_widget, plates):
         super().__init__()
         self.backend = backend
@@ -315,8 +319,8 @@ class ControlPanel(QFrame):
         button_layout.addWidget(self.btn_dis)
 
         layout.addLayout(dt_layout)
-        layout.addWidget(self.btn_schedule)
         layout.addLayout(slider_layout)
+        layout.addWidget(self.btn_schedule)
         layout.addLayout(button_layout)
         layout.addStretch()
 
@@ -409,7 +413,11 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.schedule_list, 3)
 
     def show_context_menu(self, position):
-        """Creates the Right-Click Menu"""
+        """
+        Creates the Right-Click Menu
+        :param position: position of the click
+        return: VOID
+        """
         item = self.schedule_list.itemAt(position)
         if not item:
             return  # User clicked on whitespace
