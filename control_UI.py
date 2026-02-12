@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QListWidget, QListWidgetItem, QDateTimeEdit,
                                QSlider, QFrame, QScrollArea)
 from PySide6.QtCore import Qt, QDateTime
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QIcon
 
 
 # ============================================================================
@@ -253,7 +253,8 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ARIS - Larvae Feeding Control")
-        self.resize(1100, 800)
+        self.setWindowIcon(QIcon("no_backround_icon.png"))
+        self.resize(1100, 700)
 
         self.backend = RobotBackend()
 
