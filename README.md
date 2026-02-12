@@ -17,6 +17,13 @@ Utils can be found in the movement_utils folder. They can be used for calibratio
 ## Usage - nees update
 IN THE FUTURE WILL BE USED BY CONTROL UNIT
 
+## TODO's
+1. logic so that feeds cannot hit each other
+2. outline between feeds for better visibility
+3. more feed information (i.e feed_id, time, name of project/batch etc)
+4. load feed (for changes)
+5. control panel add excel directory and photo directories
+
 
 ## Contributing - nees update
 
