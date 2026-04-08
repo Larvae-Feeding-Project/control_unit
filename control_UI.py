@@ -1,96 +1,29 @@
 import sys
-import uuid  # For creating unique IDs for every feed
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QHBoxLayout, QGridLayout, QPushButton, QLabel,
                                QListWidget, QListWidgetItem, QDateTimeEdit,
-                               QSlider, QFrame, QScrollArea, QMenu)
-from PySide6.QtCore import Qt, QDateTime, QTimer, QObject, Signal
+                               QSlider, QFrame, QScrollArea, QMenu, QDateEdit, QTimeEdit)
+from PySide6.QtCore import Qt, QDateTime, QObject, Signal, QDate, QTime
 from PySide6.QtGui import QColor, QIcon, QAction
 from enum import Enum
 
-# ============================================================================
-# UI BACKEND (Includes scheduler logic)
-# ============================================================================
-class RobotBackend(QObject):  # Inherit from QObject to use Signals & Timers
-    # Signal to tell the UI to remove an item visually when it executes
-    feed_triggered = Signal(str)
+from control_module import ControlUnit
 
-    def __init__(self):
+
+class ControlBridge(QObject):
+    """
+        This class ties UI functionality to control unit signals.
+    """
+    task_added = Signal(int, str)
+    task_executed = Signal(int)
+    task_deleted = Signal(int)
+
+    def __init__(self, control_unit):
         super().__init__()
-        self.scheduled_feeds = []  # Will store: {'id': uuid, 'time': dt, 'percent': 50, 'snapshot': [...]}
-        self.feed_identifier = 1
-        # --- TIMING MECHANISM ---
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.check_schedule)
-        self.timer.start(1000)  # Check every 1 second
-
-    def schedule_feed(self, datetime_obj, percentage, snapshot_data):
-        """
-        Receives the time, percentage, AND the full snapshot of the plates.
-        Saves them together as one distinct task.
-        """
-        # Create a unique ID for this specific task
-        task_id = self.feed_identifier
-        self.feed_identifier += 1
-
-        feed_task = {
-            'id': task_id,
-            'time': datetime_obj,
-            'percent': percentage,
-            'snapshot': snapshot_data  # The frozen state of the grid
-        }
-
-        self.scheduled_feeds.append(feed_task)
-
-        # Sort by time so the earliest feed is first
-        self.scheduled_feeds.sort(key=lambda x: x['time'])
-
-        time_str = datetime_obj.toString("yyyy-MM-dd HH:mm")
-        print(f"[LOGIC] Scheduled Feed {task_id}... for {time_str}")
-
-        # Return the ID so the UI can attach it to the list item
-        display_text = f"{time_str} - {percentage}% of the larvae volume"
-        return task_id, display_text
-
-    def delete_feed(self, task_id):
-        """Removes a feed from the internal memory based on ID."""
-        initial_count = len(self.scheduled_feeds)
-        # Keep only feeds that DO NOT match the ID
-        self.scheduled_feeds = [f for f in self.scheduled_feeds if f['id'] != task_id]
-
-        if len(self.scheduled_feeds) < initial_count:
-            print(f"[LOGIC] Deleted feed {task_id[:8]}... from memory.")
-
-    def check_schedule(self):
-        """Called every second to see if it's time to feed."""
-        now = QDateTime.currentDateTime()
-
-        # Iterate over a copy so we can remove items safely
-        for task in self.scheduled_feeds[:]:
-            if now >= task['time']:
-                self.execute_robot(task)
-
-                # Remove from memory
-                self.scheduled_feeds.remove(task)
-
-                # Tell UI to remove it from the list
-                self.feed_triggered.emit(task['id'])
-
-    def execute_robot(self, task):
-        """Actual Robot Trigger Logic"""
-        print("\n" + "=" * 40)
-        print(f"⚡ ROBOT STARTING! Time: {task['time'].toString()}")
-        print(f"⚡ Feed Amount: {task['percent']}%")
-        print(f"⚡ Snapshot Data Loaded: {len(task['snapshot'])} matrices found.")
-        # Here you would loop through task['snapshot'] to send commands to drivers
-        # for plate in task['snapshot']:
-        #    ... send serial commands ...
-        print("=" * 40 + "\n")
-
-
-# ============================================================================
-# 2. UI COMPONENTS
-# ============================================================================
+        self.cu = control_unit
+        self.cu.on_task_added = self.task_added.emit
+        self.cu.on_task_executed = self.task_executed.emit
+        self.cu.on_task_deleted = self.task_deleted.emit
 
 
 class WellState(Enum):
@@ -102,44 +35,56 @@ class WellState(Enum):
     CALCULATED = 2
 
     def next(self):
+        """
+        Cycles through the well state options
+        :return: next WellState
+        """
         return WellState((self.value + 1) % len(WellState))
 
 
 class LarvaWell(QPushButton):
-    def __init__(self, plate_id, row, col, backend):
+    """
+        This class represents a well for one larvae. It has the following properties:
+        plate_id: The plate_id that the well is in
+        row: The row that the well is in
+        col: The column that the well is in
+        state: The WellState the well is in currently
+    """
+
+    def __init__(self, plate_id, row, col, control_unit):
         super().__init__()
         self.setFixedSize(25, 25)
-        self.plate_id = plate_id
-        self.row = row
-        self.col = col
-        self.backend = backend
+        self.plate_id, self.row, self.col = plate_id, row, col
+        self.control_unit = control_unit
         self.state = WellState.CALCULATED
-
         self.clicked.connect(self.on_click)
         self.update_color()
 
     def on_click(self):
         """
-        Changes the state of the well in cyclic order using WellState ENUM
-        :return: VOID
+            Changes the state of the well in cyclic order using WellState ENUM
+            :return: VOID
         """
+
         self.set_state(self.state.next())
 
     def set_state(self, new_state):
         """
-        Sets the state of the well Manually
-        :param new_state: new state to insert
-        :return: VOID
+            Sets the state of the well Manually
+            :param new_state: new state to insert
+            :return: VOID
         """
+
         self.state = new_state
         self.update_color()
 
     def update_color(self):
         """
-        Sets the color of the well based on the given state
-        Activated whenever there is a state change
-        :return: VOID
+            Sets the color of the well based on the given state
+            Activated whenever there is a state change
+            :return: VOID
         """
+
         if self.state == WellState.MANUAL:
             color = "#f39c12"  # Orange
         elif self.state == WellState.CALCULATED:
@@ -148,32 +93,28 @@ class LarvaWell(QPushButton):
             color = "#bdc3c7"  # Grey (Disabled)
 
         self.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {color};
-                border-radius: 12px;
-                border: 1px solid #7f8c8d;
-            }}
-        """)
+                    QPushButton {{
+                        background-color: {color};
+                        border-radius: 12px;
+                        border: 1px solid #7f8c8d;
+                    }}
+                """)
 
 
 class LarvaPlate(QFrame):
-    def __init__(self, plate_id, backend, rows, columns):
+    """
+        Represents a plate of larvae wells (matrix). Currently working with 48 and 24 well plates
+        Each plate has an ID, num of rows and num of columns. It has a button for each well to change its state.
+        It also has buttons to easily change all wells to a specific state
+    """
+
+    def __init__(self, plate_id, control_unit, rows, columns):
         super().__init__()
-        self.plate_id = plate_id
-        self.rows = rows
-        self.cols = columns
+        self.plate_id, self.rows, self.cols = plate_id, rows, columns
         self.setFrameShape(QFrame.StyledPanel)
-        self.setStyleSheet("""
-            QFrame {
-                background-color: #ffffff; 
-                border-radius: 10px; 
-                border: 1px solid #ccc;
-            }
-        """)
+        self.setStyleSheet("QFrame { background-color: #ffffff; border-radius: 10px; border: 1px solid #ccc; }")
 
         layout = QVBoxLayout()
-
-        # --- HEADER ---
         header_layout = QHBoxLayout()
         title = QLabel(f"Matrix #{plate_id}")
         title.setStyleSheet("color: #333333; font-weight: bold; border: none; font-size: 14px;")
@@ -208,64 +149,47 @@ class LarvaPlate(QFrame):
         header_layout.addLayout(btn_box)
         layout.addLayout(header_layout)
 
-        # --- GRID ---
         grid_layout = QGridLayout()
         grid_layout.setSpacing(4)
-
         for r in range(self.rows):
             for c in range(self.cols):
-                well = LarvaWell(plate_id, r, c, backend)
-                grid_layout.addWidget(well, r, c)
+                grid_layout.addWidget(LarvaWell(plate_id, r, c, control_unit), r, c)
 
         layout.addLayout(grid_layout)
         self.setLayout(layout)
 
     def set_plate_state(self, new_state):
         """
-        Sets the status of all the wells in the plate to the given new_state
-        :param new_state: State to change all the wells to.
-        :return: VOID
+            Sets the status of all the wells in the plate to the given new_state
+            :param new_state: State to change all the wells to.
+            :return: VOID
         """
-        print(f"[UI] Matrix PLATE Override: Setting all to {new_state}")
-        for well in self.findChildren(LarvaWell):
-            well.set_state(new_state)
+
+        print(f"[UI] Matrix PLATE Override: Setting all wells in plate {self.plate_id} to {new_state}")
+        for well in self.findChildren(LarvaWell): well.set_state(new_state)
 
     def get_snapshot_data(self):
         """
-        Captures the exact state of every well in this plate.
-        Returns a dictionary.
+            Captures the exact state of every well in this plate.
+            :return: snapshot dictionary: {'plate_id':int, 'wells': [{well row, col, state} for each well in this plate]}
         """
-        wells_data = []
-        # findChildren finds all buttons. Note: Order is usually creation order.
-        # For strict ordering, we could sort by row/col, but this is usually sufficient.
-        for well in self.findChildren(LarvaWell):
-            wells_data.append({
-                'row': well.row,
-                'col': well.col,
-                'state': well.state
-            })
-
-        return {
-            'plate_id': self.plate_id,
-            'wells': wells_data
-        }
+        return {'plate_id': self.plate_id,
+                'wells': [{'row': w.row, 'col': w.col, 'state': w.state} for w in self.findChildren(LarvaWell)]}
 
 
 class ControlPanel(QFrame):
     """
-    Create the middle panel of the window, which consists of the main buttons
-    """
-    def __init__(self, backend, list_widget, plates):
-        super().__init__()
-        self.backend = backend
-        self.list_widget = list_widget
-        self.plates = plates
+       Holds  and controls the 3 panels of the UI
+   """
 
+    def __init__(self, control_unit, list_widget, plates):
+        super().__init__()
+        self.control_unit = control_unit  # Center panel
+        self.list_widget = list_widget  # Right panel
+        self.plates = plates  # Left panel (holds 3 LarvaePlate objects)
         self.setFrameShape(QFrame.StyledPanel)
-        self.setStyleSheet("""
-            QFrame { background-color: #f4f6f7; border-radius: 10px; }
-            QLabel { color: #333333; font-size: 14px; }
-        """)
+        self.setStyleSheet(
+            "QFrame { background-color: #f4f6f7; border-radius: 10px; } QLabel { color: #333333; font-size: 14px; }")
 
         layout = QVBoxLayout()
         layout.setSpacing(20)
@@ -282,22 +206,53 @@ class ControlPanel(QFrame):
 
         # Date&Time box
         dt_layout = QVBoxLayout()
-        lbl_time = QLabel("Schedule Time:")
-        self.dt_edit = QDateTimeEdit(QDateTime.currentDateTime())
-        self.dt_edit.setDisplayFormat("yyyy-MM-dd HH:mm")
-        self.dt_edit.setCalendarPopup(True)
-        self.dt_edit.setStyleSheet("color: #333333; background-color: white;")
-        dt_layout.addWidget(lbl_time)
-        dt_layout.addWidget(self.dt_edit)
+        dt_layout.setSpacing(10) # Added spacing between label and inputs
+        dt_label = QLabel("Schedule Time:")
+        dt_layout.addWidget(dt_label)
+
+        # Minimalist style to avoid "Rectangle" bugs: Only styles the main container
+        input_style = """
+                            QDateEdit, QTimeEdit {
+                                color: #333333; 
+                                background-color: white; 
+                                border: 1px solid #bdc3c7; 
+                                border-radius: 4px;
+                                padding: 8px;
+                                padding-right: 25px; /* FIX: Creates a safe zone so the text field doesn't overlap the arrows */
+                                font-size: 14px;
+                            }
+                            /* Ensures calendar popup numbers are visible */
+                            QCalendarWidget QAbstractItemView {
+                                background-color: white;
+                                color: #333333;
+                                selection-background-color: #3498db;
+                            }
+                            QCalendarWidget QWidget { color: #333333; }
+                        """
+
+        # Date Selector (Stacked on top)
+        self.date_edit = QDateEdit(QDate.currentDate())
+        self.date_edit.setCalendarPopup(True)
+        self.date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.date_edit.setStyleSheet(input_style)
+        self.date_edit.setMinimumHeight(40)
+
+        # Time Selector (Stacked below)
+        self.time_edit = QTimeEdit(QTime.currentTime())
+        self.time_edit.setDisplayFormat("HH:mm")
+        self.time_edit.setWrapping(True)
+        self.time_edit.setStyleSheet(input_style)
+        self.time_edit.setMinimumHeight(40)
+
+        dt_layout.addWidget(self.date_edit)
+        dt_layout.addWidget(self.time_edit)
 
         # Add to Schedule Button
         self.btn_schedule = QPushButton("Add to Schedule")
         self.btn_schedule.setMinimumHeight(40)
-        self.btn_schedule.setStyleSheet("""
-            QPushButton { background-color: #34495e; color: white; border-radius: 5px; font-weight: bold; }
-            QPushButton:hover { background-color: #2c3e50; }
-        """)
-        self.btn_schedule.clicked.connect(self.add_schedule)
+        self.btn_schedule.setStyleSheet(
+            "QPushButton { background-color: #34495e; color: white; border-radius: 5px; font-weight: bold; }")
+        self.btn_schedule.clicked.connect(self.add_feeding_to_schedule)
 
         # Global Control Buttons
         button_layout = QHBoxLayout()
@@ -323,132 +278,119 @@ class ControlPanel(QFrame):
         layout.addWidget(self.btn_schedule)
         layout.addLayout(button_layout)
         layout.addStretch()
-
         self.setLayout(layout)
 
-    def add_schedule(self):
-        # 1. Gather Snapshot of current visual state
-        full_snapshot = []
-        for plate in self.plates:
-            full_snapshot.append(plate.get_snapshot_data())
-
-        # 2. Send to Backend
-        task_id, display_text = self.backend.schedule_feed(
-            self.dt_edit.dateTime(),
-            self.slider.value(),
-            full_snapshot
-        )
-
-        # 3. Add to UI List with Hidden ID
-        item = QListWidgetItem(display_text)
-        item.setForeground(QColor("#333333"))
-
-        # STORE DATA: We save the task_id inside the item itself
-        item.setData(Qt.UserRole, task_id)
-
-        self.list_widget.addItem(item)
-
     def change_all(self, new_state):
-        for plate in self.plates:
-            plate.set_plate_state(new_state)
+        """
+            Changes all the plates to a given state
+            :param new_state: The WellState to be changed to
+            :return: VOID
+        """
 
+        for plate in self.plates: plate.set_plate_state(new_state)
 
-# ============================================================================
-# MAIN WINDOW
-# ============================================================================
+    def add_feeding_to_schedule(self):
+        """
+            Create a new feeding and adds it to the schedule in the controlUnit.
+            Sends the controlUnit the time of feeding (python datetime), percentage for calculated feeding and
+            a full_snapshot - a list of plate snapshots
+            From the controlUnit a signal is raised that also adds it to the schedule list (right column)
+            :return: VOID
+        """
+        # Merging date from date_edit and time from time_edit
+        q_date = self.date_edit.date()
+        q_time = self.time_edit.time()
+        combined_dt = QDateTime(q_date, q_time).toPython()
+
+        full_snapshot = [plate.get_snapshot_data() for plate in self.plates]
+        self.control_unit.add_feed_task(combined_dt, self.slider.value(), full_snapshot)
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ARIS - Larvae Feeding Control")
-        # Ensure this file exists in your directory
         self.setWindowIcon(QIcon("no_backround_icon.png"))
         self.resize(1100, 700)
 
-        self.backend = RobotBackend()
-        # Listen for when a feed is done so we can remove it from list
-        self.backend.feed_triggered.connect(self.remove_feed_by_id)
+        self.control_unit = ControlUnit()
+        self.bridge = ControlBridge(self.control_unit)
+
+        # Connect funcitons to the signals from the bridge
+        self.bridge.task_added.connect(self.ui_add_item)
+        self.bridge.task_executed.connect(self.ui_remove_item)
+        self.bridge.task_deleted.connect(self.ui_remove_item)
 
         central_widget = QWidget()
         main_layout = QHBoxLayout()
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
 
-        # --- LEFT COLUMN (SCROLLABLE) ---
+        # Plate control (left column)
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll_area.setStyleSheet("border: none; background-color: transparent;")
 
+        # Setup plates
         left_container = QWidget()
         left_layout = QVBoxLayout()
-        left_layout.setSpacing(15)
-
-        # Create Plates
-        self.plate1 = LarvaPlate(1, self.backend, 6, 8)
-        self.plate2 = LarvaPlate(2, self.backend, 4, 6)
-        self.plate3 = LarvaPlate(3, self.backend, 4, 6)
-
+        self.plate1 = LarvaPlate(1, self.control_unit, 6, 8)
+        self.plate2 = LarvaPlate(2, self.control_unit, 4, 6)
+        self.plate3 = LarvaPlate(3, self.control_unit, 4, 6)
         left_layout.addWidget(self.plate1)
         left_layout.addWidget(self.plate2)
         left_layout.addWidget(self.plate3)
         left_container.setLayout(left_layout)
         scroll_area.setWidget(left_container)
 
-        # --- Schedule (right column) ---
+        # UI Schedule (right column)
         self.schedule_list = QListWidget()
         self.schedule_list.setStyleSheet(
             "background-color: white; border-radius: 10px; border: 1px solid #ccc; color: #333;")
-
-        # ENABLE RIGHT CLICK CONTEXT MENU
         self.schedule_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.schedule_list.customContextMenuRequested.connect(self.show_context_menu)
 
-        # --- Control panel (middle column) ---
-        self.controls = ControlPanel(self.backend, self.schedule_list, [self.plate1, self.plate2, self.plate3])
+        # Control panel (middle column). receives the other columns so it can modify them.
+        self.controls = ControlPanel(self.control_unit, self.schedule_list, [self.plate1, self.plate2, self.plate3])
 
-        # Add to Main Layout
         main_layout.addWidget(scroll_area, 4)
         main_layout.addWidget(self.controls, 3)
         main_layout.addWidget(self.schedule_list, 3)
 
-    def show_context_menu(self, position):
+    def ui_add_item(self, feeding_id, text):
         """
-        Creates the Right-Click Menu
-        :param position: position of the click
-        return: VOID
+            Add a feeding to the UI schedule when a signal from the control unit tells it to
+            :param feeding_id: The id of the feeding
+            :param text: The text explaining about the feeding
+            :return: VOID
         """
-        item = self.schedule_list.itemAt(position)
-        if not item:
-            return  # User clicked on whitespace
+        item = QListWidgetItem(text)
+        item.setData(Qt.UserRole, feeding_id)
+        self.schedule_list.addItem(item)
 
-        menu = QMenu()
-        delete_action = QAction("Delete Feeding", self)
-        delete_action.triggered.connect(lambda: self.delete_item(item))
-        menu.addAction(delete_action)
-
-        # Show menu at mouse position
-        menu.exec(self.schedule_list.mapToGlobal(position))
-
-    def delete_item(self, item):
-        """Removes from UI and Backend"""
-        # 1. Get the Hidden ID
-        task_id = item.data(Qt.UserRole)
-
-        # 2. Tell Backend to delete data
-        self.backend.delete_feed(task_id)
-
-        # 3. Remove from UI
-        row = self.schedule_list.row(item)
-        self.schedule_list.takeItem(row)
-
-    def remove_feed_by_id(self, task_id):
-        """Auto-remove from list when timer executes"""
+    def ui_remove_item(self, feeding_id):
+        """
+        Removes a feeding from the UI schedule when a signal from the control unit tells it to
+        :param feeding_id: the feeding id to be removed
+        :return: VOID
+        """
         for i in range(self.schedule_list.count()):
-            item = self.schedule_list.item(i)
-            if item.data(Qt.UserRole) == task_id:
+            if self.schedule_list.item(i).data(Qt.UserRole) == feeding_id:
                 self.schedule_list.takeItem(i)
                 break
+
+    def show_context_menu(self, pos):
+        """
+            Creates the Right-Click Menu
+            :param position: position of the click
+            :return: VOID
+        """
+        item = self.schedule_list.itemAt(pos)
+        if not item: return  # User clicked on whitespace
+        menu = QMenu()
+        delete_action = QAction("Delete Feeding", self)
+        delete_action.triggered.connect(lambda: self.control_unit.delete_feed(item.data(Qt.UserRole)))
+        menu.addAction(delete_action)
+        menu.exec(self.schedule_list.mapToGlobal(pos))
 
 
 if __name__ == "__main__":
