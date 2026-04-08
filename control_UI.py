@@ -11,6 +11,9 @@ from control_module import ControlUnit
 
 
 class ControlBridge(QObject):
+    """
+        This class ties UI functionality to control unit signals.
+    """
     task_added = Signal(int, str)
     task_executed = Signal(int)
     task_deleted = Signal(int)
@@ -62,6 +65,7 @@ class LarvaWell(QPushButton):
             Changes the state of the well in cyclic order using WellState ENUM
             :return: VOID
         """
+
         self.set_state(self.state.next())
 
     def set_state(self, new_state):
@@ -80,6 +84,7 @@ class LarvaWell(QPushButton):
             Activated whenever there is a state change
             :return: VOID
         """
+
         if self.state == WellState.MANUAL:
             color = "#f39c12"  # Orange
         elif self.state == WellState.CALCULATED:
@@ -159,7 +164,8 @@ class LarvaPlate(QFrame):
             :param new_state: State to change all the wells to.
             :return: VOID
         """
-        print(f"[UI] Matrix PLATE Override: Setting all to {new_state}")
+
+        print(f"[UI] Matrix PLATE Override: Setting all wells in plate {self.plate_id} to {new_state}")
         for well in self.findChildren(LarvaWell): well.set_state(new_state)
 
     def get_snapshot_data(self):
@@ -245,6 +251,7 @@ class ControlPanel(QFrame):
             :param new_state: The WellState to be changed to
             :return: VOID
         """
+
         for plate in self.plates: plate.set_plate_state(new_state)
 
     def add_feeding_to_schedule(self):
@@ -255,6 +262,7 @@ class ControlPanel(QFrame):
             From the controlUnit a signal is raised that also adds it to the schedule list (right column)
             :return: VOID
         """
+
         full_snapshot = [plate.get_snapshot_data() for plate in self.plates]
         self.control_unit.add_feed_task(self.dt_edit.dateTime().toPython(), self.slider.value(), full_snapshot)
 
@@ -310,14 +318,25 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.controls, 3)
         main_layout.addWidget(self.schedule_list, 3)
 
-    def ui_add_item(self, task_id, text):
+    def ui_add_item(self, feeding_id, text):
+        """
+            Add a feeding to the UI schedule when a signal from the control unit tells it to
+            :param feeding_id: The id of the feeding
+            :param text: The text explaining about the feeding
+            :return: VOID
+        """
         item = QListWidgetItem(text)
-        item.setData(Qt.UserRole, task_id)
+        item.setData(Qt.UserRole, feeding_id)
         self.schedule_list.addItem(item)
 
-    def ui_remove_item(self, task_id):
+    def ui_remove_item(self, feeding_id):
+        """
+        Removes a feeding from the UI schedule when a signal from the control unit tells it to
+        :param feeding_id: the feeding id to be removed
+        :return: VOID
+        """
         for i in range(self.schedule_list.count()):
-            if self.schedule_list.item(i).data(Qt.UserRole) == task_id:
+            if self.schedule_list.item(i).data(Qt.UserRole) == feeding_id:
                 self.schedule_list.takeItem(i)
                 break
 
