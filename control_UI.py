@@ -2,8 +2,8 @@ import sys
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QHBoxLayout, QGridLayout, QPushButton, QLabel,
                                QListWidget, QListWidgetItem, QDateTimeEdit,
-                               QSlider, QFrame, QScrollArea, QMenu)
-from PySide6.QtCore import Qt, QDateTime, QObject, Signal
+                               QSlider, QFrame, QScrollArea, QMenu, QDateEdit, QTimeEdit)
+from PySide6.QtCore import Qt, QDateTime, QObject, Signal, QDate, QTime
 from PySide6.QtGui import QColor, QIcon, QAction
 from enum import Enum
 
@@ -206,11 +206,46 @@ class ControlPanel(QFrame):
 
         # Date&Time box
         dt_layout = QVBoxLayout()
-        self.dt_edit = QDateTimeEdit(QDateTime.currentDateTime())
-        self.dt_edit.setDisplayFormat("yyyy-MM-dd HH:mm")
-        self.dt_edit.setCalendarPopup(True)
-        dt_layout.addWidget(QLabel("Schedule Time:"))
-        dt_layout.addWidget(self.dt_edit)
+        dt_layout.setSpacing(10) # Added spacing between label and inputs
+        dt_label = QLabel("Schedule Time:")
+        dt_layout.addWidget(dt_label)
+
+        # Minimalist style to avoid "Rectangle" bugs: Only styles the main container
+        input_style = """
+                            QDateEdit, QTimeEdit {
+                                color: #333333; 
+                                background-color: white; 
+                                border: 1px solid #bdc3c7; 
+                                border-radius: 4px;
+                                padding: 8px;
+                                padding-right: 25px; /* FIX: Creates a safe zone so the text field doesn't overlap the arrows */
+                                font-size: 14px;
+                            }
+                            /* Ensures calendar popup numbers are visible */
+                            QCalendarWidget QAbstractItemView {
+                                background-color: white;
+                                color: #333333;
+                                selection-background-color: #3498db;
+                            }
+                            QCalendarWidget QWidget { color: #333333; }
+                        """
+
+        # Date Selector (Stacked on top)
+        self.date_edit = QDateEdit(QDate.currentDate())
+        self.date_edit.setCalendarPopup(True)
+        self.date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.date_edit.setStyleSheet(input_style)
+        self.date_edit.setMinimumHeight(40)
+
+        # Time Selector (Stacked below)
+        self.time_edit = QTimeEdit(QTime.currentTime())
+        self.time_edit.setDisplayFormat("HH:mm")
+        self.time_edit.setWrapping(True)
+        self.time_edit.setStyleSheet(input_style)
+        self.time_edit.setMinimumHeight(40)
+
+        dt_layout.addWidget(self.date_edit)
+        dt_layout.addWidget(self.time_edit)
 
         # Add to Schedule Button
         self.btn_schedule = QPushButton("Add to Schedule")
@@ -262,10 +297,13 @@ class ControlPanel(QFrame):
             From the controlUnit a signal is raised that also adds it to the schedule list (right column)
             :return: VOID
         """
+        # Merging date from date_edit and time from time_edit
+        q_date = self.date_edit.date()
+        q_time = self.time_edit.time()
+        combined_dt = QDateTime(q_date, q_time).toPython()
 
         full_snapshot = [plate.get_snapshot_data() for plate in self.plates]
-        self.control_unit.add_feed_task(self.dt_edit.dateTime().toPython(), self.slider.value(), full_snapshot)
-
+        self.control_unit.add_feed_task(combined_dt, self.slider.value(), full_snapshot)
 
 class MainWindow(QMainWindow):
     def __init__(self):
