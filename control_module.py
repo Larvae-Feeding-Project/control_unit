@@ -39,7 +39,7 @@ class ControlUnit:
 
         print(f"[CONTROL_UNIT]: ControlUnit initialized!")
 
-    def add_feed_task(self, python_dt, percentage, snapshot_data):
+    def add_feed_task(self, python_dt, percentage, manual_amount, snapshot_data):
         """
             Adds feeding to the schedule (and also updates the UI using a signal)
             :param python_dt: python time object for the feeding
@@ -55,6 +55,7 @@ class ControlUnit:
                 'id': feed_id,
                 'time': python_dt,
                 'percent': percentage,
+                'manual_amount': manual_amount,
                 'snapshot': snapshot_data
             }
             self.scheduled_feeds.append(feeding)

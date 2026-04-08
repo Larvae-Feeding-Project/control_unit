@@ -5,6 +5,11 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                                QSlider, QFrame, QScrollArea, QMenu, QDateEdit, QTimeEdit)
 from PySide6.QtCore import Qt, QDateTime, QObject, Signal, QDate, QTime
 from PySide6.QtGui import QColor, QIcon, QAction
+from PySide6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel,
+                               QSlider, QDateEdit, QTimeEdit, QPushButton,
+                               QLineEdit)
+from PySide6.QtCore import Qt, QDate, QTime, QDateTime
+from PySide6.QtGui import QDoubleValidator
 from enum import Enum
 
 from control_module import ControlUnit
@@ -179,8 +184,8 @@ class LarvaPlate(QFrame):
 
 class ControlPanel(QFrame):
     """
-       Holds  and controls the 3 panels of the UI
-   """
+       Holds and controls the 3 panels of the UI
+    """
 
     def __init__(self, control_unit, list_widget, plates):
         super().__init__()
@@ -204,24 +209,42 @@ class ControlPanel(QFrame):
         slider_layout.addWidget(self.lbl_percent)
         slider_layout.addWidget(self.slider)
 
+        # ==========================================
+        # NEW: Manual Amount Textbox
+        # ==========================================
+        manual_layout = QVBoxLayout()
+        self.lbl_manual = QLabel("Manual amount (micro liters):")
+        self.manual_input = QLineEdit()
+        self.manual_input.setPlaceholderText("0.0")
+        self.manual_input.setMinimumHeight(40)
+
+        # Validator ensures only positive numbers (and decimals) can be typed
+        # QDoubleValidator(bottom, top, decimals)
+        validator = QDoubleValidator(0.0, 999999.0, 3)
+        validator.setNotation(QDoubleValidator.StandardNotation)  # Prevents scientific notation (e.g., 1e-4)
+        self.manual_input.setValidator(validator)
+
+        manual_layout.addWidget(self.lbl_manual)
+        manual_layout.addWidget(self.manual_input)
+        # ==========================================
+
         # Date&Time box
         dt_layout = QVBoxLayout()
-        dt_layout.setSpacing(10) # Added spacing between label and inputs
+        dt_layout.setSpacing(10)  # Added spacing between label and inputs
         dt_label = QLabel("Schedule Time:")
         dt_layout.addWidget(dt_label)
 
-        # Minimalist style to avoid "Rectangle" bugs: Only styles the main container
+        # Minimalist style: Added QLineEdit to the selector so it matches the date/time boxes
         input_style = """
-                            QDateEdit, QTimeEdit {
+                            QDateEdit, QTimeEdit, QLineEdit {
                                 color: #333333; 
                                 background-color: white; 
                                 border: 1px solid #bdc3c7; 
                                 border-radius: 4px;
                                 padding: 8px;
-                                padding-right: 25px; /* FIX: Creates a safe zone so the text field doesn't overlap the arrows */
+                                padding-right: 25px; 
                                 font-size: 14px;
                             }
-                            /* Ensures calendar popup numbers are visible */
                             QCalendarWidget QAbstractItemView {
                                 background-color: white;
                                 color: #333333;
@@ -229,6 +252,9 @@ class ControlPanel(QFrame):
                             }
                             QCalendarWidget QWidget { color: #333333; }
                         """
+
+        # Apply style to the new manual input as well
+        self.manual_input.setStyleSheet(input_style)
 
         # Date Selector (Stacked on top)
         self.date_edit = QDateEdit(QDate.currentDate())
@@ -275,6 +301,7 @@ class ControlPanel(QFrame):
 
         layout.addLayout(dt_layout)
         layout.addLayout(slider_layout)
+        layout.addLayout(manual_layout)  # Added the new layout here
         layout.addWidget(self.btn_schedule)
         layout.addLayout(button_layout)
         layout.addStretch()
@@ -286,7 +313,6 @@ class ControlPanel(QFrame):
             :param new_state: The WellState to be changed to
             :return: VOID
         """
-
         for plate in self.plates: plate.set_plate_state(new_state)
 
     def add_feeding_to_schedule(self):
@@ -302,8 +328,13 @@ class ControlPanel(QFrame):
         q_time = self.time_edit.time()
         combined_dt = QDateTime(q_date, q_time).toPython()
 
+        # You can now access the manual input value via:
+        manual_val_str = self.manual_input.text()
+        manual_amount = float(manual_val_str) if manual_val_str else 0.0
+
         full_snapshot = [plate.get_snapshot_data() for plate in self.plates]
-        self.control_unit.add_feed_task(combined_dt, self.slider.value(), full_snapshot)
+
+        self.control_unit.add_feed_task(combined_dt, self.slider.value(), manual_amount, full_snapshot)
 
 class MainWindow(QMainWindow):
     def __init__(self):
