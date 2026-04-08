@@ -9,6 +9,7 @@ from enum import Enum
 
 from control_module import ControlUnit
 
+
 class ControlBridge(QObject):
     task_added = Signal(int, str)
     task_executed = Signal(int)
@@ -21,14 +22,32 @@ class ControlBridge(QObject):
         self.cu.on_task_executed = self.task_executed.emit
         self.cu.on_task_deleted = self.task_deleted.emit
 
+
 class WellState(Enum):
+    """
+    This enum represents the 3 states a well can be in: Disabled, Manual or Calculated
+    """
     DISABLED = 0
     MANUAL = 1
     CALCULATED = 2
+
     def next(self):
+        """
+        Cycles through the well state options
+        :return: next WellState
+        """
         return WellState((self.value + 1) % len(WellState))
 
+
 class LarvaWell(QPushButton):
+    """
+        This class represents a well for one larvae. It has the following properties:
+        plate_id: The plate_id that the well is in
+        row: The row that the well is in
+        col: The column that the well is in
+        state: The WellState the well is in currently
+    """
+
     def __init__(self, plate_id, row, col, control_unit):
         super().__init__()
         self.setFixedSize(25, 25)
@@ -38,18 +57,52 @@ class LarvaWell(QPushButton):
         self.clicked.connect(self.on_click)
         self.update_color()
 
-    def on_click(self): self.set_state(self.state.next())
+    def on_click(self):
+        """
+            Changes the state of the well in cyclic order using WellState ENUM
+            :return: VOID
+        """
+        self.set_state(self.state.next())
+
     def set_state(self, new_state):
+        """
+            Sets the state of the well Manually
+            :param new_state: new state to insert
+            :return: VOID
+        """
+
         self.state = new_state
         self.update_color()
 
     def update_color(self):
-        if self.state == WellState.MANUAL: color = "#f39c12"
-        elif self.state == WellState.CALCULATED: color = "#3498db"
-        else: color = "#bdc3c7"
-        self.setStyleSheet(f"QPushButton {{ background-color: {color}; border-radius: 12px; border: 1px solid #7f8c8d; }}")
+        """
+            Sets the color of the well based on the given state
+            Activated whenever there is a state change
+            :return: VOID
+        """
+        if self.state == WellState.MANUAL:
+            color = "#f39c12"  # Orange
+        elif self.state == WellState.CALCULATED:
+            color = "#3498db"  # Blue
+        else:
+            color = "#bdc3c7"  # Grey (Disabled)
+
+        self.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {color};
+                        border-radius: 12px;
+                        border: 1px solid #7f8c8d;
+                    }}
+                """)
+
 
 class LarvaPlate(QFrame):
+    """
+        Represents a plate of larvae wells (matrix). Currently working with 48 and 24 well plates
+        Each plate has an ID, num of rows and num of columns. It has a button for each well to change its state.
+        It also has buttons to easily change all wells to a specific state
+    """
+
     def __init__(self, plate_id, control_unit, rows, columns):
         super().__init__()
         self.plate_id, self.rows, self.cols = plate_id, rows, columns
@@ -61,23 +114,25 @@ class LarvaPlate(QFrame):
         title = QLabel(f"Matrix #{plate_id}")
         title.setStyleSheet("color: #333333; font-weight: bold; border: none; font-size: 14px;")
 
-        # --- REVERTED TO ORIGINAL EXPLICIT BUTTONS ---
         btn_box = QHBoxLayout()
         btn_box.setSpacing(5)
 
         btn_calc = QPushButton("Calc")
         btn_calc.setFixedSize(50, 25)
-        btn_calc.setStyleSheet("background-color: #3498db; color: white; border-radius: 4px; border: none; font-weight: bold; font-size: 11px;")
+        btn_calc.setStyleSheet(
+            "background-color: #3498db; color: white; border-radius: 4px; border: none; font-weight: bold; font-size: 11px;")
         btn_calc.clicked.connect(lambda: self.set_plate_state(WellState.CALCULATED))
 
         btn_man = QPushButton("Man")
         btn_man.setFixedSize(50, 25)
-        btn_man.setStyleSheet("background-color: #f39c12; color: white; border-radius: 4px; border: none; font-weight: bold; font-size: 11px;")
+        btn_man.setStyleSheet(
+            "background-color: #f39c12; color: white; border-radius: 4px; border: none; font-weight: bold; font-size: 11px;")
         btn_man.clicked.connect(lambda: self.set_plate_state(WellState.MANUAL))
 
         btn_dis = QPushButton("Dis")
         btn_dis.setFixedSize(50, 25)
-        btn_dis.setStyleSheet("background-color: #bdc3c7; color: black; border-radius: 4px; border: none; font-weight: bold; font-size: 11px;")
+        btn_dis.setStyleSheet(
+            "background-color: #bdc3c7; color: black; border-radius: 4px; border: none; font-weight: bold; font-size: 11px;")
         btn_dis.clicked.connect(lambda: self.set_plate_state(WellState.DISABLED))
 
         btn_box.addWidget(btn_calc)
@@ -99,21 +154,41 @@ class LarvaPlate(QFrame):
         self.setLayout(layout)
 
     def set_plate_state(self, new_state):
+        """
+            Sets the status of all the wells in the plate to the given new_state
+            :param new_state: State to change all the wells to.
+            :return: VOID
+        """
+        print(f"[UI] Matrix PLATE Override: Setting all to {new_state}")
         for well in self.findChildren(LarvaWell): well.set_state(new_state)
 
     def get_snapshot_data(self):
-        return {'plate_id': self.plate_id, 'wells': [{'row': w.row, 'col': w.col, 'state': w.state} for w in self.findChildren(LarvaWell)]}
+        """
+            Captures the exact state of every well in this plate.
+            :return: snapshot dictionary: {'plate_id':int, 'wells': [{well row, col, state} for each well in this plate]}
+        """
+        return {'plate_id': self.plate_id,
+                'wells': [{'row': w.row, 'col': w.col, 'state': w.state} for w in self.findChildren(LarvaWell)]}
+
 
 class ControlPanel(QFrame):
+    """
+       Holds  and controls the 3 panels of the UI
+   """
+
     def __init__(self, control_unit, list_widget, plates):
         super().__init__()
-        self.control_unit, self.list_widget, self.plates = control_unit, list_widget, plates
+        self.control_unit = control_unit  # Center panel
+        self.list_widget = list_widget  # Right panel
+        self.plates = plates  # Left panel (holds 3 LarvaePlate objects)
         self.setFrameShape(QFrame.StyledPanel)
-        self.setStyleSheet("QFrame { background-color: #f4f6f7; border-radius: 10px; } QLabel { color: #333333; font-size: 14px; }")
+        self.setStyleSheet(
+            "QFrame { background-color: #f4f6f7; border-radius: 10px; } QLabel { color: #333333; font-size: 14px; }")
 
         layout = QVBoxLayout()
         layout.setSpacing(20)
 
+        # Formula slider
         slider_layout = QVBoxLayout()
         self.lbl_percent = QLabel("Feed percentage: 50%")
         self.slider = QSlider(Qt.Horizontal)
@@ -123,6 +198,7 @@ class ControlPanel(QFrame):
         slider_layout.addWidget(self.lbl_percent)
         slider_layout.addWidget(self.slider)
 
+        # Date&Time box
         dt_layout = QVBoxLayout()
         self.dt_edit = QDateTimeEdit(QDateTime.currentDateTime())
         self.dt_edit.setDisplayFormat("yyyy-MM-dd HH:mm")
@@ -130,12 +206,14 @@ class ControlPanel(QFrame):
         dt_layout.addWidget(QLabel("Schedule Time:"))
         dt_layout.addWidget(self.dt_edit)
 
+        # Add to Schedule Button
         self.btn_schedule = QPushButton("Add to Schedule")
         self.btn_schedule.setMinimumHeight(40)
-        self.btn_schedule.setStyleSheet("QPushButton { background-color: #34495e; color: white; border-radius: 5px; font-weight: bold; }")
-        self.btn_schedule.clicked.connect(self.add_schedule)
+        self.btn_schedule.setStyleSheet(
+            "QPushButton { background-color: #34495e; color: white; border-radius: 5px; font-weight: bold; }")
+        self.btn_schedule.clicked.connect(self.add_feeding_to_schedule)
 
-        # --- REVERTED TO ORIGINAL EXPLICIT BUTTONS ---
+        # Global Control Buttons
         button_layout = QHBoxLayout()
 
         self.btn_calc = QPushButton("All Calc")
@@ -162,21 +240,36 @@ class ControlPanel(QFrame):
         self.setLayout(layout)
 
     def change_all(self, new_state):
+        """
+            Changes all the plates to a given state
+            :param new_state: The WellState to be changed to
+            :return: VOID
+        """
         for plate in self.plates: plate.set_plate_state(new_state)
 
-    def add_schedule(self):
+    def add_feeding_to_schedule(self):
+        """
+            Create a new feeding and adds it to the schedule in the controlUnit.
+            Sends the controlUnit the time of feeding (python datetime), percentage for calculated feeding and
+            a full_snapshot - a list of plate snapshots
+            From the controlUnit a signal is raised that also adds it to the schedule list (right column)
+            :return: VOID
+        """
         full_snapshot = [plate.get_snapshot_data() for plate in self.plates]
         self.control_unit.add_feed_task(self.dt_edit.dateTime().toPython(), self.slider.value(), full_snapshot)
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("ARIS - Larvae Feeding Control")
+        self.setWindowIcon(QIcon("no_backround_icon.png"))
         self.resize(1100, 700)
 
         self.control_unit = ControlUnit()
         self.bridge = ControlBridge(self.control_unit)
 
+        # Connect funcitons to the signals from the bridge
         self.bridge.task_added.connect(self.ui_add_item)
         self.bridge.task_executed.connect(self.ui_remove_item)
         self.bridge.task_deleted.connect(self.ui_remove_item)
@@ -186,27 +279,36 @@ class MainWindow(QMainWindow):
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
 
+        # Plate control (left column)
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setStyleSheet("border: none; background-color: transparent;")
 
+        # Setup plates
         left_container = QWidget()
         left_layout = QVBoxLayout()
         self.plate1 = LarvaPlate(1, self.control_unit, 6, 8)
         self.plate2 = LarvaPlate(2, self.control_unit, 4, 6)
         self.plate3 = LarvaPlate(3, self.control_unit, 4, 6)
-        left_layout.addWidget(self.plate1); left_layout.addWidget(self.plate2); left_layout.addWidget(self.plate3)
+        left_layout.addWidget(self.plate1)
+        left_layout.addWidget(self.plate2)
+        left_layout.addWidget(self.plate3)
         left_container.setLayout(left_layout)
         scroll_area.setWidget(left_container)
 
+        # UI Schedule (right column)
         self.schedule_list = QListWidget()
-        self.schedule_list.setStyleSheet("background-color: white; border-radius: 10px; border: 1px solid #ccc; color: #333;")
+        self.schedule_list.setStyleSheet(
+            "background-color: white; border-radius: 10px; border: 1px solid #ccc; color: #333;")
         self.schedule_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.schedule_list.customContextMenuRequested.connect(self.show_context_menu)
 
+        # Control panel (middle column). receives the other columns so it can modify them.
         self.controls = ControlPanel(self.control_unit, self.schedule_list, [self.plate1, self.plate2, self.plate3])
 
-        main_layout.addWidget(scroll_area, 4); main_layout.addWidget(self.controls, 3); main_layout.addWidget(self.schedule_list, 3)
+        main_layout.addWidget(scroll_area, 4)
+        main_layout.addWidget(self.controls, 3)
+        main_layout.addWidget(self.schedule_list, 3)
 
     def ui_add_item(self, task_id, text):
         item = QListWidgetItem(text)
@@ -220,13 +322,19 @@ class MainWindow(QMainWindow):
                 break
 
     def show_context_menu(self, pos):
+        """
+            Creates the Right-Click Menu
+            :param position: position of the click
+            :return: VOID
+        """
         item = self.schedule_list.itemAt(pos)
-        if not item: return
+        if not item: return  # User clicked on whitespace
         menu = QMenu()
         delete_action = QAction("Delete Feeding", self)
         delete_action.triggered.connect(lambda: self.control_unit.delete_feed(item.data(Qt.UserRole)))
         menu.addAction(delete_action)
         menu.exec(self.schedule_list.mapToGlobal(pos))
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
