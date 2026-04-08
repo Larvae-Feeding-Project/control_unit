@@ -7,6 +7,9 @@ It includes the control_unit module, UI and logo.
 
 1. PySide6
 2. enum
+3. time
+4. datetime
+5. threading
 
 ## Utils - nees update
 Utils can be found in the movement_utils folder. They can be used for calibration, introduction of new commands and more. The current utils are:
