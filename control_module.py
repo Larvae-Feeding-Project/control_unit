@@ -5,18 +5,22 @@ from datetime import datetime
 # Subsystem imports
 from movement_driver import movement_driver
 from fluidics_system import fluidics_module
+
+
 # from cv_system import cv_module
 
 class ControlUnit:
-    def __init__(self):
+    def __init__(self, dev_mode=False):
         """
         Control Unit constructor. Creates movement system, fluidics system and CV objects.
         :return: ControlUnit object
         """
+        self.dev_mode = dev_mode
         try:
-            # self.fluidics_module = fluidics_module.FluidicsDriver()
-            # self.movement_module = movement_driver.MovementDriver()
-            # self.cv_module = cv_module()
+            if not self.dev_mode:
+                self.fluidics_module = fluidics_module.FluidicsDriver()
+                self.movement_module = movement_driver.MovementDriver()
+                # self.cv_module = cv_module()
             pass
         except Exception as e:
             print(f"[CONTROL_UNIT]: One of the subsystem initiations failed!. EXITING!")
@@ -78,7 +82,7 @@ class ControlUnit:
         """
         with self.lock:
             self.scheduled_feeds = [t for t in self.scheduled_feeds if t['id'] != feeding_id]
-        if self.on_task_deleted: # Check if a UI 'plugged in' a function (meaning it is not None)
+        if self.on_task_deleted:  # Check if a UI 'plugged in' a function (meaning it is not None)
             self.on_task_deleted(feeding_id)
         print(f"[CONTROL_UNIT]: Deleted feeding {feeding_id}")
 
@@ -107,10 +111,19 @@ class ControlUnit:
             time.sleep(1)
 
     def execute_feeding(self, task):
-        # todo: implement feeding flow
-        print(f"\n⚡ ROBOT STARTING! Time: {task['time']}")
-        print(f"⚡ Feed Amount: {task['percent']}%")
-        print("=" * 40 + "\n")
+        """
+        Executes a feeding, by coordinating all the subsystems
+        :param task: data structure with all the feeding data (name, snapshot etc)
+        :return:
+        """
+        # In dev mode doesnt actgually use subsystems, only prints
+        if self.dev_mode: # todo: implement feeding flow
+            print(f"\n⚡ ROBOT STARTING! Time: {task['time']}")
+            print(f"⚡ Feed Amount: {task['percent']}%")
+            print("=" * 40 + "\n")
+            return
+
+
 
     def __del__(self):
         self.running = False

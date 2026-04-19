@@ -14,6 +14,9 @@ from enum import Enum
 
 from control_module import ControlUnit
 
+# DEV_MODE that does not initialize subsystems
+DEV_MODE = True
+
 
 class ControlBridge(QObject):
     """
@@ -343,7 +346,7 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(QIcon("no_backround_icon.png"))
         self.resize(1100, 700)
 
-        self.control_unit = ControlUnit()
+        self.control_unit = ControlUnit(dev_mode=DEV_MODE)
         self.bridge = ControlBridge(self.control_unit)
 
         # Connect funcitons to the signals from the bridge
