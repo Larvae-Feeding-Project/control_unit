@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QFrame, QVBoxLayout, QHBoxLayout, QLabel,
                                QLineEdit)
 from PySide6.QtCore import Qt, QDate, QTime, QDateTime
 from PySide6.QtGui import QDoubleValidator
-from enum import Enum
+from control_enums import *
 
 from control_module import ControlUnit
 
@@ -32,23 +32,6 @@ class ControlBridge(QObject):
         self.cu.on_task_added = self.task_added.emit
         self.cu.on_task_executed = self.task_executed.emit
         self.cu.on_task_deleted = self.task_deleted.emit
-
-
-class WellState(Enum):
-    """
-    This enum represents the 3 states a well can be in: Disabled, Manual or Calculated
-    """
-    DISABLED = 0
-    MANUAL = 1
-    CALCULATED = 2
-
-    def next(self):
-        """
-        Cycles through the well state options
-        :return: next WellState
-        """
-        return WellState((self.value + 1) % len(WellState))
-
 
 class LarvaWell(QPushButton):
     """
@@ -331,7 +314,7 @@ class ControlPanel(QFrame):
         q_time = self.time_edit.time()
         combined_dt = QDateTime(q_date, q_time).toPython()
 
-        # You can now access the manual input value via:
+        # Manual value amount
         manual_val_str = self.manual_input.text()
         manual_amount = float(manual_val_str) if manual_val_str else 0.0
 
