@@ -21,11 +21,11 @@ class WellState(Enum):
         return WellState((self.value + 1) % len(WellState))
 
 
-class MachineStatus(Enum):
+class ControlStatus(Enum):
     """
     This enum represents the states the Machine can be in: Disabled, Manual or Calculated
     """
     IDLE = 0
-    RUNNING = 1
+    FEEDING = 1
     FLUSHING = 2
 

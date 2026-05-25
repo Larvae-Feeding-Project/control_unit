@@ -2,13 +2,14 @@ import threading
 import time
 from datetime import datetime
 from control_enums import *
+from pathlib import Path
+import json
 
 # Subsystem imports
 from movement_driver import movement_driver
 from fluidics_system import fluidics_module
-
-
 # from cv_system import cv_module
+
 
 class ControlUnit:
     def __init__(self, dev_mode=False):
@@ -16,6 +17,22 @@ class ControlUnit:
         Control Unit constructor. Creates movement system, fluidics system and CV objects.
         :return: ControlUnit object
         """
+
+        # Path to fluidics module directory
+        base_dir = Path(__file__).resolve().parent
+        data_path = base_dir / "control_data.json"
+
+        # Open control data dict
+        try:
+            with open(data_path, "r") as file:
+                self.control_data = json.load(file)
+            print("Control data loaded successfully")
+        except FileNotFoundError:
+            print('No control data file found')
+        except Exception as e:
+            print("Exception occurred, could not open data.json")
+
+        # Init
         self.dev_mode = dev_mode
         try:
             if not self.dev_mode:
@@ -27,6 +44,7 @@ class ControlUnit:
             print(f"[CONTROL_UNIT]: One of the subsystem initiations failed!. EXITING!")
             exit(1)
 
+        self.status = ControlStatus.IDLE
         self.scheduled_feeds = []
         self.feed_identifier = 1
         self.lock = threading.Lock()
@@ -111,19 +129,57 @@ class ControlUnit:
 
             time.sleep(1)
 
-    def execute_feeding(self, task):
+    def _feeding_startup(self):
+        """
+            Gets Aris ready for feeding. Moves the arm above container and then fills the tube
+            :return: True when finished or else if something fails
+        """
+        container_loc = self.control_data["EMPTY_CONTAINER_LOC"]
+        if not self.movement_module.move(x=container_loc["X"], y=container_loc["Y"], z=container_loc["Z"],speed=3000): return False
+        if not self.fluidics_module.fill_tube(): return False
+
+        return True
+
+    def _feeding_operation(self):
+
+        return
+
+    def _feeding_end(self):
+        """
+            Finishes feeding operation of ARIS. Empties tube and then moves arm back to resting place (reset)
+            :return: True when finished or else if something fails
+        """
+        if not self.fluidics_module.clear_tube(): return False
+        self.movement_module.reset()
+        return True
+
+    def execute_feeding(self, feeding):
         """
         Executes a feeding, by coordinating all the subsystems
-        :param task: data structure with all the feeding data (name, snapshot etc)
+        :param feeding: data structure with all the feeding data (name, snapshot etc)
         :return:
         """
-        # In dev mode doesnt actgually use subsystems, only prints
+
+        # Update status
+        self.status = ControlStatus.FEEDING
+
+        # In dev mode doesn't actually use subsystems, only prints
         if self.dev_mode: # todo: implement feeding flow
-            print(f"\n⚡ ROBOT STARTING! Time: {task['time']}")
-            print(f"⚡ Feed Amount: {task['percent']}%")
+            print(f"\n⚡ ROBOT STARTING! Time: {feeding['time']}")
+            print(f"⚡ Feed Amount: {feeding['percent']}%")
             print("=" * 40 + "\n")
+            time.sleep(20)
+            self.status = ControlStatus.IDLE
             return
 
+        # Actual feeding process
+        else:
+            print(f"\n⚡ ROBOT STARTING! Time: {feeding['time']}")
+            self._feeding_startup()
+            self._feeding_operation()
+            self._feeding_end()
+            print(f"\n⚡ ROBOT ENDED FEEDING")
+            self.status = ControlStatus.IDLE
 
 
     def __del__(self):
