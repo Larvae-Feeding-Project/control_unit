@@ -25,6 +25,7 @@ class ControlBridge(QObject):
     task_added = Signal(int, str)
     task_executed = Signal(int)
     task_deleted = Signal(int)
+    status_changed = Signal(object)
 
     def __init__(self, control_unit):
         super().__init__()
@@ -32,7 +33,7 @@ class ControlBridge(QObject):
         self.cu.on_task_added = self.task_added.emit
         self.cu.on_task_executed = self.task_executed.emit
         self.cu.on_task_deleted = self.task_deleted.emit
-
+        self.cu.on_status_changed = self.status_changed.emit
 
 class LarvaWell(QPushButton):
     """
@@ -198,9 +199,7 @@ class ControlPanel(QFrame):
         slider_layout.addWidget(self.lbl_percent)
         slider_layout.addWidget(self.slider)
 
-        # ==========================================
-        # NEW: Manual Amount Textbox
-        # ==========================================
+        # Manual amount
         manual_layout = QVBoxLayout()
         self.lbl_manual = QLabel("Manual amount (micro liters):")
         self.manual_input = QLineEdit()
@@ -294,6 +293,11 @@ class ControlPanel(QFrame):
         layout.addWidget(self.btn_schedule)
         layout.addLayout(button_layout)
         layout.addStretch()
+
+        # Status widget
+        self.status_widget = StatusWidget(self.control_unit.status)
+        layout.addWidget(self.status_widget)
+
         self.setLayout(layout)
 
     def change_all(self, new_state):
@@ -326,6 +330,64 @@ class ControlPanel(QFrame):
         self.control_unit.add_feed_task(combined_dt, self.slider.value(), manual_amount, full_snapshot)
 
 
+class StatusWidget(QFrame):
+    """
+    A widget that displays the ControlUnit status using distinct colors.
+    Updated purely by signals, no polling.
+    """
+
+    def __init__(self, initial_status):
+        super().__init__()
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setStyleSheet("QFrame { background-color: white; border-radius: 8px; border: 1px solid #bdc3c7; }")
+
+        layout = QHBoxLayout()
+
+        self.lbl_title = QLabel("System Status:")
+        self.lbl_title.setStyleSheet("font-weight: bold; border: none; color: #333333;")
+
+        self.lbl_status = QLabel()
+        self.lbl_status.setAlignment(Qt.AlignCenter)
+
+        layout.addWidget(self.lbl_title)
+        layout.addStretch()
+        layout.addWidget(self.lbl_status)
+        self.setLayout(layout)
+        self.setMinimumHeight(50)
+
+        # Run once immediately to set the initial state
+        self.refresh_status(initial_status)
+
+    def refresh_status(self, current_status):
+        """
+        Receives the new ControlStatus enum from the signal and updates the UI.
+        """
+        text = current_status.name
+
+        if current_status == ControlStatus.IDLE:
+            bg_color = "#2ecc71"  # Green
+            text_color = "white"
+        elif current_status == ControlStatus.FEEDING:
+            bg_color = "#e74c3c"  # Red
+            text_color = "white"
+        elif current_status == ControlStatus.FLUSHING:
+            bg_color = "#9b59b6"  # Purple
+            text_color = "white"
+        else:
+            bg_color = "#95a5a6"  # Grey
+            text_color = "white"
+
+        self.lbl_status.setText(text)
+        self.lbl_status.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg_color}; 
+                color: {text_color}; 
+                padding: 6px 20px; 
+                border-radius: 6px; 
+                font-weight: bold;
+                border: none;
+            }}
+        """)
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -336,7 +398,7 @@ class MainWindow(QMainWindow):
         self.control_unit = ControlUnit(dev_mode=DEV_MODE)
         self.bridge = ControlBridge(self.control_unit)
 
-        # Connect funcitons to the signals from the bridge
+        # Connect functions to the signals from the bridge
         self.bridge.task_added.connect(self.ui_add_item)
         self.bridge.task_executed.connect(self.ui_remove_item)
         self.bridge.task_deleted.connect(self.ui_remove_item)
@@ -372,6 +434,9 @@ class MainWindow(QMainWindow):
 
         # Control panel (middle column). receives the other columns so it can modify them.
         self.controls = ControlPanel(self.control_unit, self.schedule_list, [self.plate1, self.plate2, self.plate3])
+
+        # Connect the status signal directly to the widget's refresh function
+        self.bridge.status_changed.connect(self.controls.status_widget.refresh_status)
 
         main_layout.addWidget(scroll_area, 4)
         main_layout.addWidget(self.controls, 3)

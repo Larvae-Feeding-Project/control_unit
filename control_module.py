@@ -60,6 +60,7 @@ class ControlUnit:
         self.on_task_added = None
         self.on_task_executed = None
         self.on_task_deleted = None
+        self.on_status_changed = None
 
         # Run thread that manages scheduled execution
         self.thread = threading.Thread(target=self._run_schedule_loop, daemon=True)
@@ -111,6 +112,15 @@ class ControlUnit:
             self.on_task_deleted(feeding_id)
         print(f"[CONTROL_UNIT]: Deleted feeding {feeding_id}")
 
+    def _set_status(self, new_status):
+        """
+            Safely updates the machine status and notifies the UI immediately.
+        :param new_status: The ControlStatus enum to change to.
+        """
+        self.status = new_status
+        if self.on_status_changed:
+            self.on_status_changed(new_status)
+
     def _run_schedule_loop(self):
         """
             Runs constantly and checks if a feeding needs to be initiated.
@@ -143,7 +153,8 @@ class ControlUnit:
 
     def _feeding_startup(self):
         """
-            Gets Aris ready for feeding. Moves the arm above container and then fills the tube
+                Gets Aris ready for feeding. Moves the arm above container and then fills the tube
+            Future update will also heat up the arm
             :return: True when finished or else if something fails
         """
         container_loc = self.control_data["EMPTY_CONTAINER_LOC"]
@@ -155,9 +166,9 @@ class ControlUnit:
 
     def _feeding_operation(self, feeding):
         """
-
-        :param feeding:
-        :return:
+            Runs the feeding process itself. Works plate by plate
+        :param feeding: The feeding data
+        :return: True when finished (errors in plates may have occurred)
         """
         plates_lst = feeding["snapshot_data"]
         manual_amount = feeding["manual_amount"]
@@ -227,7 +238,7 @@ class ControlUnit:
         """
 
         # Update status
-        self.status = ControlStatus.FEEDING
+        self._set_status(ControlStatus.FEEDING)
 
         # In dev mode doesn't actually use subsystems, only waits and prints
         if self.dev_mode:
@@ -235,18 +246,18 @@ class ControlUnit:
             print(f"⚡ Feed Amount: {feeding['percent']}%")
             print("=" * 40 + "\n")
             time.sleep(20)
-            self.status = ControlStatus.IDLE
+            self._set_status(ControlStatus.IDLE)
             print(f"\n***DEV_MODE_ON*** ⚡ ROBOT FINISHED!")
             return
 
         # Actual feeding process
         else:
-            print(f"\n⚡ ROBOT STARTING! Time: {feeding['time']}")
+            print(f"\n⚡ ROBOT STARTING! Scheduled Time: {feeding['time']}")
             self._feeding_startup()
             self._feeding_operation(feeding)
             self._feeding_end()
             print(f"\n⚡ ROBOT ENDED FEEDING")
-            self.status = ControlStatus.IDLE
+            self._set_status(ControlStatus.IDLE)
 
     def __del__(self):
         self.running = False
