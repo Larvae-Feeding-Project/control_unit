@@ -4,11 +4,16 @@ from datetime import datetime
 from control_enums import *
 from pathlib import Path
 import json
+import string
 
 # Subsystem imports
 from movement_driver import movement_driver
 from fluidics_system import fluidics_module
+
 # from cv_system import cv_module
+
+SAFE_Z = 100.0
+INDEX_TO_LETTER = string.ascii_uppercase  # 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 
 class ControlUnit:
@@ -67,6 +72,7 @@ class ControlUnit:
             Adds feeding to the schedule (and also updates the UI using a signal)
             :param python_dt: python time object for the feeding
             :param percentage: int representing the percentage of volume for feeding
+            :param manual_amount: int representing manual amount of the feeding (in micro liters)
             :param snapshot_data: snapshot of the 3 plates (list of plate snapshots)
             :return: The feeding ID
         """
@@ -135,14 +141,68 @@ class ControlUnit:
             :return: True when finished or else if something fails
         """
         container_loc = self.control_data["EMPTY_CONTAINER_LOC"]
-        if not self.movement_module.move(x=container_loc["X"], y=container_loc["Y"], z=container_loc["Z"],speed=3000): return False
+        if not self.movement_module.move(x=container_loc["X"], y=container_loc["Y"], z=container_loc["Z"],
+                                         speed=3000): return False
         if not self.fluidics_module.fill_tube(): return False
 
         return True
 
-    def _feeding_operation(self):
+    def _feeding_operation(self, feeding):
+        """
 
-        return
+        :param feeding:
+        :return:
+        """
+        plates_lst = feeding["snapshot_data"]
+        manual_amount = feeding["manual_amount"]
+        for matrix_index, plate in enumerate(plates_lst):
+            plate_success = self._feed_plate(plate, matrix_index, manual_amount)
+            if not plate_success:
+                print(f"Problem with matrix{matrix_index}, continuing to next plate")
+
+        return True
+
+    def _feed_plate(self, plate, matrix_index, manual_amount):
+        """
+            Feeds of the specific plate.
+        :param plate: plate snapshot - {'plate_id':int,
+        'plate_type': PlateType, 'wells': [{well row, col, state} for each well in this plate]}
+        :param matrix_index: number of the matrix we are working on (1,2,3)
+        :param manual_amount: preset amount to feed in microliters
+        :return: False if there was some problem, True if everything worked fine
+        """
+        wells_lst = plate["wells"]
+        matrix = f"MATRIX{matrix_index}"
+        plate_type = plate["plate_type"]
+        for well in wells_lst:
+            # Disabled well
+            if well["state"] == WellState.DISABLED:
+                continue
+
+            # Manual well
+            elif well["state"] == WellState.MANUAL:
+                # Move just above larvae
+                if not self.movement_module.move_to_well(matrix, plate_type, INDEX_TO_LETTER[well["row"]], well["col"],
+                                                         SAFE_Z):
+                    return False
+                if not self.movement_module.move_to_well(matrix, plate_type, INDEX_TO_LETTER[well["row"]], well["col"],
+                                                         57):  # Need to change to user defined height
+                    return False
+
+                # Dispense preset amount
+                print(f"  -> Dispensing {manual_amount}uL...")
+                dispense_success = self.fluidics_module.output(manual_amount)
+                if not dispense_success:
+                    print(f"  -> WARNING: Dispense failed")
+                    return False
+
+                # Move up to safe height before continuing
+                self.movement_module.move_to_well(matrix, plate_type, INDEX_TO_LETTER[well["row"]], well["col"],
+                                                  SAFE_Z)
+
+            # Calculated well
+            if well["state"] == WellState.CALCULATED:
+                continue
 
     def _feeding_end(self):
         """
@@ -163,24 +223,24 @@ class ControlUnit:
         # Update status
         self.status = ControlStatus.FEEDING
 
-        # In dev mode doesn't actually use subsystems, only prints
-        if self.dev_mode: # todo: implement feeding flow
-            print(f"\n⚡ ROBOT STARTING! Time: {feeding['time']}")
+        # In dev mode doesn't actually use subsystems, only waits and prints
+        if self.dev_mode:
+            print(f"\n***DEV_MODE_ON*** ⚡ ROBOT STARTING! Time: {feeding['time']}")
             print(f"⚡ Feed Amount: {feeding['percent']}%")
             print("=" * 40 + "\n")
             time.sleep(20)
             self.status = ControlStatus.IDLE
+            print(f"\n***DEV_MODE_ON*** ⚡ ROBOT FINISHED!")
             return
 
         # Actual feeding process
         else:
             print(f"\n⚡ ROBOT STARTING! Time: {feeding['time']}")
             self._feeding_startup()
-            self._feeding_operation()
+            self._feeding_operation(feeding)
             self._feeding_end()
             print(f"\n⚡ ROBOT ENDED FEEDING")
             self.status = ControlStatus.IDLE
-
 
     def __del__(self):
         self.running = False

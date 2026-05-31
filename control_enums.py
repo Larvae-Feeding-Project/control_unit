@@ -29,3 +29,10 @@ class ControlStatus(Enum):
     FEEDING = 1
     FLUSHING = 2
 
+
+class PlateType(Enum):
+    """
+        This enum represents the plate types (i.e number of wells) by name
+    """
+    PLATE24 = "PLATE24"
+    PLATE48 = "PLATE48"

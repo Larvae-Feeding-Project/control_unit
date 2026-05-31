@@ -33,6 +33,7 @@ class ControlBridge(QObject):
         self.cu.on_task_executed = self.task_executed.emit
         self.cu.on_task_deleted = self.task_deleted.emit
 
+
 class LarvaWell(QPushButton):
     """
         This class represents a well for one larvae. It has the following properties:
@@ -99,8 +100,9 @@ class LarvaPlate(QFrame):
         It also has buttons to easily change all wells to a specific state
     """
 
-    def __init__(self, plate_id, control_unit, rows, columns):
+    def __init__(self, plate_id, plate_type, control_unit, rows, columns):
         super().__init__()
+        self.plate_type = plate_type
         self.plate_id, self.rows, self.cols = plate_id, rows, columns
         self.setFrameShape(QFrame.StyledPanel)
         self.setStyleSheet("QFrame { background-color: #ffffff; border-radius: 10px; border: 1px solid #ccc; }")
@@ -161,10 +163,11 @@ class LarvaPlate(QFrame):
 
     def get_snapshot_data(self):
         """
-            Captures the exact state of every well in this plate.
-            :return: snapshot dictionary: {'plate_id':int, 'wells': [{well row, col, state} for each well in this plate]}
+        Captures the exact state of every well in this plate.
+        :return: plate snapshot dictionary: {'plate_id':int,
+        'plate_type': PlateType, 'wells': [{well row, col, state} for each well in this plate]}
         """
-        return {'plate_id': self.plate_id,
+        return {'plate_id': self.plate_id, 'plate_type': self.plate_type,
                 'wells': [{'row': w.row, 'col': w.col, 'state': w.state} for w in self.findChildren(LarvaWell)]}
 
 
@@ -322,6 +325,7 @@ class ControlPanel(QFrame):
 
         self.control_unit.add_feed_task(combined_dt, self.slider.value(), manual_amount, full_snapshot)
 
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -350,9 +354,9 @@ class MainWindow(QMainWindow):
         # Setup plates
         left_container = QWidget()
         left_layout = QVBoxLayout()
-        self.plate1 = LarvaPlate(1, self.control_unit, 6, 8)
-        self.plate2 = LarvaPlate(2, self.control_unit, 4, 6)
-        self.plate3 = LarvaPlate(3, self.control_unit, 4, 6)
+        self.plate1 = LarvaPlate(1, PlateType.PLATE48, self.control_unit, 6, 8)
+        self.plate2 = LarvaPlate(2, PlateType.PLATE24, self.control_unit, 4, 6)
+        self.plate3 = LarvaPlate(3, PlateType.PLATE24, self.control_unit, 4, 6)
         left_layout.addWidget(self.plate1)
         left_layout.addWidget(self.plate2)
         left_layout.addWidget(self.plate3)
