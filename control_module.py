@@ -120,18 +120,24 @@ class ControlUnit:
         """
         while self.running:
             now = datetime.now()
-            executed_ids = []
+            tasks_to_run = []
 
+            # Acquire lock and extract feedings that their time has come
             with self.lock:
                 for task in self.scheduled_feeds[:]:
                     if now >= task['time']:
-                        self.execute_feeding(task)
+                        tasks_to_run.append(task)
+                        # Remove from backend queue
                         self.scheduled_feeds.remove(task)
-                        executed_ids.append(task['id'])
 
-            if self.on_task_executed:
-                for tid in executed_ids:
-                    self.on_task_executed(tid)
+            # Execute tasks outside the lock
+            for task in tasks_to_run:
+                # Remove from UI queue
+                if self.on_task_executed:
+                    self.on_task_executed(task['id'])
+
+                # Execute the feeding
+                self.execute_feeding(task)
 
             time.sleep(1)
 
