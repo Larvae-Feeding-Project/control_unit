@@ -28,6 +28,7 @@ class ControlStatus(Enum):
     IDLE = 0
     FEEDING = 1
     FLUSHING = 2
+    STOPPING = 3
 
 
 class PlateType(Enum):

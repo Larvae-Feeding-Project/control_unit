@@ -294,6 +294,15 @@ class ControlPanel(QFrame):
         layout.addLayout(button_layout)
         layout.addStretch()
 
+        # STOP button
+        self.btn_stop = QPushButton("STOP")
+        self.btn_stop.setMinimumHeight(60)
+        self.btn_stop.setStyleSheet(
+            "QPushButton { background-color: #e74c3c; color: white; border-radius: 8px; font-weight: bold; font-size: 20px; border: 2px solid #c0392b; }"
+            "QPushButton:hover { background-color: #c0392b; }"
+        )
+        self.btn_stop.clicked.connect(self.control_unit.request_stop)
+        layout.addWidget(self.btn_stop)
         # Status widget
         self.status_widget = StatusWidget(self.control_unit.status)
         layout.addWidget(self.status_widget)
@@ -372,6 +381,9 @@ class StatusWidget(QFrame):
             text_color = "white"
         elif current_status == ControlStatus.FLUSHING:
             bg_color = "#9b59b6"  # Purple
+            text_color = "white"
+        elif current_status == ControlStatus.STOPPING:
+            bg_color = "#f39c12"  # Orange
             text_color = "white"
         else:
             bg_color = "#95a5a6"  # Grey

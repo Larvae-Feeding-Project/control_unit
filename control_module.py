@@ -54,6 +54,9 @@ class ControlUnit:
         self.feed_identifier = 1
         self.lock = threading.Lock()
 
+        # Stop event
+        self.stop_event = threading.Event()
+
         self.running = True
 
         # UI callback "sockets"
@@ -174,6 +177,10 @@ class ControlUnit:
         manual_amount = feeding["manual_amount"]
         for matrix_index, plate in enumerate(plates_lst):
             plate_success = self._feed_plate(plate, matrix_index, manual_amount)
+
+            # Stop if stop event is on
+            if self.stop_event.is_set(): return False
+
             if not plate_success:
                 print(f"Problem with matrix{matrix_index}, continuing to next plate")
 
@@ -192,6 +199,12 @@ class ControlUnit:
         matrix = f"MATRIX{matrix_index}"
         plate_type = plate["plate_type"]
         for well in wells_lst:
+
+            # Catch abort request
+            if self.stop_event.is_set():
+                print(f"  -> Aborting matrix {matrix_index} loop due to STOP request.")
+                return False
+
             # Disabled well
             if well["state"] == WellState.DISABLED:
                 continue
@@ -239,6 +252,7 @@ class ControlUnit:
 
         # Update status
         self._set_status(ControlStatus.FEEDING)
+        self.stop_event.clear()
 
         # In dev mode doesn't actually use subsystems, only waits and prints
         if self.dev_mode:
@@ -253,11 +267,53 @@ class ControlUnit:
         # Actual feeding process
         else:
             print(f"\n⚡ ROBOT STARTING! Scheduled Time: {feeding['time']}")
-            self._feeding_startup()
-            self._feeding_operation(feeding)
-            self._feeding_end()
-            print(f"\n⚡ ROBOT ENDED FEEDING")
+
+            # Startup
+            startup_success = False
+            if self.stop_event.is_set():
+                print("Aborted before startup...")
+            else:
+                startup_success = self._feeding_startup()
+
+            # Feeding operation
+            if startup_success and not self.stop_event.is_set():
+                self._feeding_operation(feeding)
+
+            # Evaluate finish process
+            if self.stop_event.is_set():
+                print("\n⚠️ FEEDING ABORTED DUE TO EMERGENCY STOP!")
+
+                # Give the restarted systems a minute to reset properly
+                time.sleep(60)
+
+            else:
+                self._feeding_end()
+                print(f"\n⚡ ROBOT ENDED FEEDING")
+
+            self.stop_event.clear()
             self._set_status(ControlStatus.IDLE)
+
+    def request_stop(self):
+        """
+            Triggered by the UI STOP button. Halts hardware and flags the python thread to abort.
+        """
+        if self.status is not ControlStatus.FEEDING:
+            return
+
+        print("\n[CONTROL_UNIT]: 🛑 EMERGENCY STOP REQUESTED!")
+
+        # Flag feeding functions to stop
+        self.stop_event.set()
+
+        # Hardware kills immediately
+        if not self.dev_mode:
+            if hasattr(self, 'movement_module'):
+                self.movement_module.emergency_stop()
+            if hasattr(self, 'fluidics_module'):
+                self.fluidics_module.emergency_stop()
+
+        # Update UI and backend status
+        self._set_status(ControlStatus.STOPPING)
 
     def __del__(self):
         self.running = False
