@@ -14,7 +14,7 @@ from fluidics_system import fluidics_module
 
 SAFE_Z = 100.0
 INDEX_TO_LETTER = string.ascii_uppercase  # 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-
+TEMP_FEED_Z = 56
 
 class ControlUnit:
     def __init__(self, dev_mode=False):
@@ -161,6 +161,7 @@ class ControlUnit:
             :return: True when finished or else if something fails
         """
         container_loc = self.control_data["EMPTY_CONTAINER_LOC"]
+        self.movement_module.move(z=100)
         if not self.movement_module.move(x=container_loc["X"], y=container_loc["Y"], z=container_loc["Z"],
                                          speed=3000): return False
         if not self.fluidics_module.fill_tube(): return False
@@ -173,16 +174,17 @@ class ControlUnit:
         :param feeding: The feeding data
         :return: True when finished (errors in plates may have occurred)
         """
-        plates_lst = feeding["snapshot_data"]
+        print(feeding)
+        plates_lst = feeding["snapshot"]
         manual_amount = feeding["manual_amount"]
         for matrix_index, plate in enumerate(plates_lst):
-            plate_success = self._feed_plate(plate, matrix_index, manual_amount)
+            plate_success = self._feed_plate(plate, matrix_index+1, manual_amount)
 
             # Stop if stop event is on
             if self.stop_event.is_set(): return False
 
             if not plate_success:
-                print(f"Problem with matrix{matrix_index}, continuing to next plate")
+                print(f"Problem with matrix{matrix_index+1}, continuing to next plate")
 
         return True
 
@@ -215,8 +217,13 @@ class ControlUnit:
                 if not self.movement_module.move_to_well(matrix, plate_type, INDEX_TO_LETTER[well["row"]], well["col"],
                                                          SAFE_Z):
                     return False
+
+                if self.stop_event.is_set():
+                    print(f"  -> Aborting matrix {matrix_index} loop due to STOP request.")
+                    return False
+
                 if not self.movement_module.move_to_well(matrix, plate_type, INDEX_TO_LETTER[well["row"]], well["col"],
-                                                         57):  # Need to change to user defined height
+                                                         TEMP_FEED_Z):  # Need to change to user defined height
                     return False
 
                 # Dispense preset amount
@@ -233,6 +240,8 @@ class ControlUnit:
             # Calculated well
             if well["state"] == WellState.CALCULATED:
                 continue
+
+        return True
 
     def _feeding_end(self):
         """

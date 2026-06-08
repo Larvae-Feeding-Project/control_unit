@@ -2,5 +2,5 @@
   "COMPORT": "COM7",
   "BAUD_RATE": 115200,
 
-  "EMPTY_CONTAINER_LOC": {"X": 10, "Y": 10, "Z": 20}
+  "EMPTY_CONTAINER_LOC": {"X": 50, "Y": 300, "Z": 150}
 }

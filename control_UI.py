@@ -15,7 +15,7 @@ from control_enums import *
 from control_module import ControlUnit
 
 # DEV_MODE that does not initialize subsystems
-DEV_MODE = True
+DEV_MODE = False
 
 
 class ControlBridge(QObject):
