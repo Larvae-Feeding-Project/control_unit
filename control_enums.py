@@ -29,6 +29,7 @@ class ControlStatus(Enum):
     FEEDING = 1
     FLUSHING = 2
     STOPPING = 3
+    MOVING = 4
 
 
 class PlateType(Enum):

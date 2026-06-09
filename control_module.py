@@ -14,7 +14,8 @@ from fluidics_system import fluidics_module
 
 SAFE_Z = 100.0
 INDEX_TO_LETTER = string.ascii_uppercase  # 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-TEMP_FEED_Z = 56
+TEMP_FEED_Z = 54 #for on bed feeding 47.4
+WORK_Z = 150
 
 class ControlUnit:
     def __init__(self, dev_mode=False):
@@ -58,6 +59,7 @@ class ControlUnit:
         self.stop_event = threading.Event()
 
         self.running = True
+        self.arm_is_up = False
 
         # UI callback "sockets"
         self.on_task_added = None
@@ -166,6 +168,8 @@ class ControlUnit:
                                          speed=3000): return False
         if not self.fluidics_module.fill_tube(): return False
 
+        time.sleep(4)
+
         return True
 
     def _feeding_operation(self, feeding):
@@ -235,7 +239,7 @@ class ControlUnit:
 
                 # Move up to safe height before continuing
                 self.movement_module.move_to_well(matrix, plate_type, INDEX_TO_LETTER[well["row"]], well["col"],
-                                                  SAFE_Z)
+                                                  SAFE_Z, speed=6000)
 
             # Calculated well
             if well["state"] == WellState.CALCULATED:
@@ -333,3 +337,47 @@ class ControlUnit:
         except:
             pass
         print(f"[CONTROL_UNIT]: shutting down...")
+
+    def request_arm_toggle(self):
+        """
+        Triggered by the UI. Starts a thread to toggle arm position up/down.
+        Only allowed if system is IDLE.
+        """
+        if self.status != ControlStatus.IDLE:
+            print("[CONTROL_UNIT]: Cannot move arm, system is busy.")
+            return
+
+        # Open in a thread to prevent UI freezing
+        threading.Thread(target=self._toggle_arm_thread, daemon=True).start()
+
+    def _toggle_arm_thread(self):
+        """
+        Thread function that actually moves the arm and updates the status.
+        """
+
+
+        if self.dev_mode:
+            direction = "DOWN" if self.arm_is_up else "UP"
+            print(f"\n***DEV_MODE_ON*** ⚡ Moving arm {direction}...")
+            time.sleep(2)  # Simulate movement duration
+            self.arm_is_up = not self.arm_is_up
+        else:
+            # Set your desired Z values here (assuming 0.0 is bed height)
+            self._set_status(ControlStatus.MOVING)
+            target_z = 0.0 if self.arm_is_up else WORK_Z
+            print(f"[CONTROL_UNIT]: Moving arm to Z={target_z}...")
+
+            try:
+                success = self.movement_module.move(z=target_z)
+                if success:
+                    self.arm_is_up = not self.arm_is_up
+                    print("[CONTROL_UNIT]: Arm movement complete.")
+                else:
+                    print("[CONTROL_UNIT]: WARNING: Arm movement failed.")
+                self._set_status(ControlStatus.IDLE)
+            except Exception as e:
+                print(f"[CONTROL_UNIT]: Error moving arm: {e}")
+                self._set_status(ControlStatus.IDLE)
+
+        # Release the machine back to IDLE
+        #self._set_status(ControlStatus.IDLE)

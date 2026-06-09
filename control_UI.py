@@ -294,6 +294,17 @@ class ControlPanel(QFrame):
         layout.addLayout(button_layout)
         layout.addStretch()
 
+        # --- MOVE ARM button ---
+        self.btn_move_arm = QPushButton("Toggle Arm UP/DOWN")
+        self.btn_move_arm.setMinimumHeight(50)
+        self.btn_move_arm.setStyleSheet(
+            "QPushButton { background-color: #8e44ad; color: white; border-radius: 8px; font-weight: bold; font-size: 16px; border: 2px solid #732d91; }"
+            "QPushButton:hover { background-color: #732d91; }"
+        )
+        self.btn_move_arm.clicked.connect(self.control_unit.request_arm_toggle)
+        layout.addWidget(self.btn_move_arm)
+        # ----------------------------
+
         # STOP button
         self.btn_stop = QPushButton("STOP")
         self.btn_stop.setMinimumHeight(60)
@@ -384,6 +395,9 @@ class StatusWidget(QFrame):
             text_color = "white"
         elif current_status == ControlStatus.STOPPING:
             bg_color = "#f39c12"  # Orange
+            text_color = "white"
+        elif current_status == ControlStatus.MOVING:
+            bg_color = "#3498db"  # Blue
             text_color = "white"
         else:
             bg_color = "#95a5a6"  # Grey
