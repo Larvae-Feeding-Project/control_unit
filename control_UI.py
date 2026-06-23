@@ -15,7 +15,7 @@ from control_enums import *
 from control_module import ControlUnit
 
 # DEV_MODE that does not initialize subsystems
-DEV_MODE = False
+DEV_MODE = True
 
 
 class ControlBridge(QObject):
@@ -191,11 +191,11 @@ class ControlPanel(QFrame):
 
         # Formula slider
         slider_layout = QVBoxLayout()
-        self.lbl_percent = QLabel("Feed percentage: 50%")
+        self.lbl_percent = QLabel("Feed Ratio (% of Body Volume): 50%")
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setRange(0, 100)
         self.slider.setValue(50)
-        self.slider.valueChanged.connect(lambda v: self.lbl_percent.setText(f"Feed percentage: {v}%"))
+        self.slider.valueChanged.connect(lambda v: self.lbl_percent.setText(f"Feed Ratio (% of Body Volume): {v}%"))
         slider_layout.addWidget(self.lbl_percent)
         slider_layout.addWidget(self.slider)
 
