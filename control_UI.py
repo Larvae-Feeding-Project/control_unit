@@ -117,14 +117,14 @@ class LarvaPlate(QFrame):
         btn_box = QHBoxLayout()
         btn_box.setSpacing(5)
 
-        # --- NEW: Toggle Plate Type Button ---
+        # Toggle Plate Type Button
         self.btn_toggle_type = QPushButton()
         self.btn_toggle_type.setFixedSize(115, 25)
         self.btn_toggle_type.setStyleSheet(
             "background-color: #8e44ad; color: white; border-radius: 4px; border: none; font-weight: bold; font-size: 11px;")
         self.btn_toggle_type.clicked.connect(self.toggle_plate_type)
-        # -------------------------------------
 
+        # Change all plate wells buttons
         btn_calc = QPushButton("Calc")
         btn_calc.setFixedSize(50, 25)
         btn_calc.setStyleSheet(
@@ -166,8 +166,11 @@ class LarvaPlate(QFrame):
 
     def init_wells(self, plate_type):
         """
-        Clears the existing well grid and repopulates it based on the specified plate_type.
+            Clears the existing well grid and repopulates it based on the specified plate_type.
+        :param plate_type: The plate type (enum, can be PLATE 24 or PLATE48)
+        :return: None
         """
+
         self.plate_type = plate_type
 
         # Define dimensions and button text based on plate type
@@ -181,21 +184,23 @@ class LarvaPlate(QFrame):
         # Update the title to show current dimension
         self.title.setText(f"Matrix #{self.plate_id} ({self.plate_type.name})")
 
-        # 1. Clear existing well widgets from the layout
+        # Clear existing well widgets from the layout
         while self.grid_layout.count():
             child = self.grid_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
 
-        # 2. Populate new well widgets
+        # Populate new well widgets
         for r in range(self.rows):
             for c in range(self.cols):
                 self.grid_layout.addWidget(LarvaWell(self.plate_id, r, c, self.control_unit), r, c)
 
     def toggle_plate_type(self):
         """
-        Flips the plate type and reinitializes the wells.
+            Flips the plate type and reinitializes the wells.
+            :return: None
         """
+
         if self.plate_type == PlateType.PLATE48:
             self.init_wells(PlateType.PLATE24)
         else:
@@ -207,6 +212,7 @@ class LarvaPlate(QFrame):
             :param new_state: State to change all the wells to.
             :return: VOID
         """
+
         print(f"[UI] Matrix PLATE Override: Setting all wells in plate {self.plate_id} to {new_state}")
         for well in self.findChildren(LarvaWell): well.set_state(new_state)
 
@@ -216,6 +222,7 @@ class LarvaPlate(QFrame):
         :return: plate snapshot dictionary: {'plate_id':int,
         'plate_type': PlateType, 'wells': [{well row, col, state} for each well in this plate]}
         """
+        
         return {'plate_id': self.plate_id, 'plate_type': self.plate_type,
                 'wells': [{'row': w.row, 'col': w.col, 'state': w.state} for w in self.findChildren(LarvaWell)]}
 
