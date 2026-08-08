@@ -222,7 +222,7 @@ class LarvaPlate(QFrame):
         :return: plate snapshot dictionary: {'plate_id':int,
         'plate_type': PlateType, 'wells': [{well row, col, state} for each well in this plate]}
         """
-        
+
         return {'plate_id': self.plate_id, 'plate_type': self.plate_type,
                 'wells': [{'row': w.row, 'col': w.col, 'state': w.state} for w in self.findChildren(LarvaWell)]}
 

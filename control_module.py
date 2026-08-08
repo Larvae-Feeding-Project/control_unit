@@ -44,7 +44,7 @@ class ControlUnit:
             if not self.dev_mode:
                 self.fluidics_module = fluidics_module.FluidicsDriver()
                 self.movement_module = movement_driver.MovementDriver()
-                # self.cv_module = cv_module()
+                self.vision_system = vision_system()
             pass
         except Exception as e:
             print(f"[CONTROL_UNIT]: One of the subsystem initiations failed!. EXITING!")
@@ -175,35 +175,39 @@ class ControlUnit:
 
         return True
 
-    def _feeding_operation(self, feeding):
+    def _feeding_operation(self, feeding, exp_path):
         """
             Runs the feeding process itself. Works plate by plate
         :param feeding: The feeding data
+        :param exp_path: Pathlib object to the current experiment's data folder
         :return: True when finished (errors in plates may have occurred)
         """
+
         print(feeding)
         plates_lst = feeding["snapshot"]
         manual_amount = feeding["manual_amount"]
         for matrix_index, plate in enumerate(plates_lst):
-            plate_success = self._feed_plate(plate, matrix_index+1, manual_amount)
+            plate_success = self._feed_plate(plate, matrix_index + 1, manual_amount, exp_path)
 
             # Stop if stop event is on
             if self.stop_event.is_set(): return False
 
             if not plate_success:
-                print(f"Problem with matrix{matrix_index+1}, continuing to next plate")
+                print(f"Problem with matrix{matrix_index + 1}, continuing to next plate")
 
         return True
 
-    def _feed_plate(self, plate, matrix_index, manual_amount):
+    def _feed_plate(self, plate, matrix_index, manual_amount, exp_path):
         """
             Feeds of the specific plate.
         :param plate: plate snapshot - {'plate_id':int,
         'plate_type': PlateType, 'wells': [{well row, col, state} for each well in this plate]}
         :param matrix_index: number of the matrix we are working on (1,2,3)
         :param manual_amount: preset amount to feed in microliters
+        :param exp_path: Pathlib object to the experiment's folder
         :return: False if there was some problem, True if everything worked fine
         """
+
         wells_lst = plate["wells"]
         matrix = f"MATRIX{matrix_index}"
         plate_type = plate["plate_type"]
@@ -246,8 +250,24 @@ class ControlUnit:
 
             # Calculated well
             if well["state"] == WellState.CALCULATED:
-                continue
+                # Move camera above larvae
+                if not self.movement_module.move_to_well_photo_position(matrix, plate_type,
+                                                                        INDEX_TO_LETTER[well["row"]], well["col"]):
+                    return False
 
+                if self.stop_event.is_set():
+                    print(f"  -> Aborting matrix {matrix_index} loop due to STOP request.")
+                    return False
+
+                # Build the filename for the photo (e.g., MATRIX1_A0.jpg)
+                well_id = f"{matrix}_{INDEX_TO_LETTER[well['row']]}{well['col']}"
+                photo_path = exp_path / f"{well_id}.jpg"
+
+                # Take photo
+                if not self.vision_system.take_photo(str(photo_path)):
+                    print(f"  -> WARNING: Vision system failure! Photo skipped for {well_id}.")
+
+        # Successful execution
         return True
 
     def _feeding_end(self):
@@ -261,7 +281,7 @@ class ControlUnit:
 
     def execute_feeding(self, feeding):
         """
-        Executes a feeding, by coordinating all the subsystems
+            Executes a feeding, by coordinating all the subsystems
         :param feeding: data structure with all the feeding data (name, snapshot etc)
         :return:
         """
@@ -283,6 +303,21 @@ class ControlUnit:
         # Actual feeding process
         else:
             print(f"\n⚡ ROBOT STARTING! Scheduled Time: {feeding['time']}")
+
+            # Experiment Directory creation
+            exp_name = feeding.get('experiment_name', 'Unnamed_Experiment')
+            base_dir_str = self.control_data.get("BASE_DATA_DIRECTORY", "")
+            feed_id = feeding.get('id', 'unknown_id')
+            exp_path = Path(base_dir_str) / exp_name / f"feed_{feed_id}"
+            try:
+                # Creates the folder, and any parent folders if they don't exist
+                exp_path.mkdir(parents=True, exist_ok=True)
+                print(f"[CONTROL_UNIT]: Experiment directory ready at {exp_path}")
+            except Exception as e:
+                print(f"[CONTROL_UNIT]: ERROR creating directory {exp_path}: {e}")
+                self._set_status(ControlStatus.IDLE)
+                return
+
 
             # Startup
             startup_success = False
@@ -336,7 +371,7 @@ class ControlUnit:
         try:
             if hasattr(self, 'movement_module'): self.movement_module.__del__()
             if hasattr(self, 'fluidics_module'): self.fluidics_module.__del__()
-            if hasattr(self, 'cv_module'): self.cv_module.__del__()
+            if hasattr(self, 'vision_system'): self.vision_system.__del__()
         except:
             pass
         print(f"[CONTROL_UNIT]: shutting down...")

@@ -1,6 +1,5 @@
 {
   "COMPORT": "COM7",
-  "BAUD_RATE": 115200,
-
+  "BASE_DATA_DIRECTORY": "\"C:\\Users\\nitai\\Desktop\\ARIS_DATA\"",
   "EMPTY_CONTAINER_LOC": {"X": 50, "Y": 300, "Z": 150}
 }
