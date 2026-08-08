@@ -189,6 +189,37 @@ class ControlPanel(QFrame):
         layout = QVBoxLayout()
         layout.setSpacing(20)
 
+        # Minimalist style definition moved up so all inputs can share it
+        input_style = """
+            QDateEdit, QTimeEdit, QLineEdit {
+                color: #333333; 
+                background-color: white; 
+                border: 1px solid #bdc3c7; 
+                border-radius: 4px;
+                padding: 8px;
+                padding-right: 25px; 
+                font-size: 14px;
+            }
+            QCalendarWidget QAbstractItemView {
+                background-color: white;
+                color: #333333;
+                selection-background-color: #3498db;
+            }
+            QCalendarWidget QWidget { color: #333333; }
+        """
+
+        # --- NEW: Experiment Name Box ---
+        exp_layout = QVBoxLayout()
+        exp_layout.setSpacing(10)
+        self.lbl_exp = QLabel("Experiment Name:")
+        self.experiment_name_input = QLineEdit()
+        self.experiment_name_input.setPlaceholderText("e.g., Exp_01_Control")
+        self.experiment_name_input.setMinimumHeight(40)
+        self.experiment_name_input.setStyleSheet(input_style)
+        exp_layout.addWidget(self.lbl_exp)
+        exp_layout.addWidget(self.experiment_name_input)
+        # --------------------------------
+
         # Formula slider
         slider_layout = QVBoxLayout()
         self.lbl_percent = QLabel("Feed Ratio (% of Body Volume): 50%")
@@ -205,44 +236,21 @@ class ControlPanel(QFrame):
         self.manual_input = QLineEdit()
         self.manual_input.setPlaceholderText("0.0")
         self.manual_input.setMinimumHeight(40)
+        self.manual_input.setStyleSheet(input_style)  # Applied shared style
 
         # Validator ensures only positive numbers (and decimals) can be typed
-        # QDoubleValidator(bottom, top, decimals)
         validator = QDoubleValidator(0.0, 999999.0, 3)
-        validator.setNotation(QDoubleValidator.StandardNotation)  # Prevents scientific notation (e.g., 1e-4)
+        validator.setNotation(QDoubleValidator.StandardNotation)
         self.manual_input.setValidator(validator)
 
         manual_layout.addWidget(self.lbl_manual)
         manual_layout.addWidget(self.manual_input)
-        # ==========================================
 
         # Date&Time box
         dt_layout = QVBoxLayout()
-        dt_layout.setSpacing(10)  # Added spacing between label and inputs
+        dt_layout.setSpacing(10)
         dt_label = QLabel("Schedule Time:")
         dt_layout.addWidget(dt_label)
-
-        # Minimalist style: Added QLineEdit to the selector so it matches the date/time boxes
-        input_style = """
-                            QDateEdit, QTimeEdit, QLineEdit {
-                                color: #333333; 
-                                background-color: white; 
-                                border: 1px solid #bdc3c7; 
-                                border-radius: 4px;
-                                padding: 8px;
-                                padding-right: 25px; 
-                                font-size: 14px;
-                            }
-                            QCalendarWidget QAbstractItemView {
-                                background-color: white;
-                                color: #333333;
-                                selection-background-color: #3498db;
-                            }
-                            QCalendarWidget QWidget { color: #333333; }
-                        """
-
-        # Apply style to the new manual input as well
-        self.manual_input.setStyleSheet(input_style)
 
         # Date Selector (Stacked on top)
         self.date_edit = QDateEdit(QDate.currentDate())
@@ -287,9 +295,10 @@ class ControlPanel(QFrame):
         button_layout.addWidget(self.btn_man)
         button_layout.addWidget(self.btn_dis)
 
+        layout.addLayout(exp_layout)  # Added Experiment layout at the top
         layout.addLayout(dt_layout)
         layout.addLayout(slider_layout)
-        layout.addLayout(manual_layout)  # Added the new layout here
+        layout.addLayout(manual_layout)
         layout.addWidget(self.btn_schedule)
         layout.addLayout(button_layout)
         layout.addStretch()
@@ -314,6 +323,7 @@ class ControlPanel(QFrame):
         )
         self.btn_stop.clicked.connect(self.control_unit.request_stop)
         layout.addWidget(self.btn_stop)
+
         # Status widget
         self.status_widget = StatusWidget(self.control_unit.status)
         layout.addWidget(self.status_widget)
@@ -345,9 +355,12 @@ class ControlPanel(QFrame):
         manual_val_str = self.manual_input.text()
         manual_amount = float(manual_val_str) if manual_val_str else 0.0
 
+        # Experiment name string
+        exp_name = self.experiment_name_input.text().strip()
+
         full_snapshot = [plate.get_snapshot_data() for plate in self.plates]
 
-        self.control_unit.add_feed_task(combined_dt, self.slider.value(), manual_amount, full_snapshot)
+        self.control_unit.add_feed_task(combined_dt, self.slider.value(), manual_amount, full_snapshot, exp_name)
 
 
 class StatusWidget(QFrame):

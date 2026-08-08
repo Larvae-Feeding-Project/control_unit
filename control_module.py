@@ -14,7 +14,7 @@ from fluidics_system import fluidics_module
 
 SAFE_Z = 100.0
 INDEX_TO_LETTER = string.ascii_uppercase  # 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-TEMP_FEED_Z = 54 #for on bed feeding 47.4
+TEMP_FEED_Z = 54.3 #for on bed feeding 47.4
 WORK_Z = 150
 
 class ControlUnit:
@@ -73,13 +73,14 @@ class ControlUnit:
 
         print(f"[CONTROL_UNIT]: ControlUnit initialized!")
 
-    def add_feed_task(self, python_dt, percentage, manual_amount, snapshot_data):
+    def add_feed_task(self, python_dt, percentage, manual_amount, snapshot_data, experiment_name=""):
         """
             Adds feeding to the schedule (and also updates the UI using a signal)
             :param python_dt: python time object for the feeding
             :param percentage: int representing the percentage of volume for feeding
             :param manual_amount: int representing manual amount of the feeding (in micro liters)
             :param snapshot_data: snapshot of the 3 plates (list of plate snapshots)
+            :param experiment_name: str representing the name of the experiment
             :return: The feeding ID
         """
         with self.lock:
@@ -88,6 +89,7 @@ class ControlUnit:
 
             feeding = {
                 'id': feed_id,
+                'experiment_name': experiment_name,
                 'time': python_dt,
                 'percent': percentage,
                 'manual_amount': manual_amount,
@@ -99,7 +101,8 @@ class ControlUnit:
         # Check if UI is plugged in and if yes build the relevant text for UI schedule
         if self.on_task_added:
             time_str = python_dt.strftime("%Y-%m-%d %H:%M")
-            display_text = f"Feeding_id: {feed_id}\nTime: {time_str} - {percentage}% of the larvae volume"
+            display_name = experiment_name if experiment_name else "Unnamed"
+            display_text = f"Experiment Name: {display_name}\nFeeding ID: {feed_id}\nScheduled Time: {time_str} - {percentage}%"
             self.on_task_added(feed_id, display_text)
 
         print(f"[CONTROL_UNIT]: added feeding {feed_id}:\n{feeding}")
