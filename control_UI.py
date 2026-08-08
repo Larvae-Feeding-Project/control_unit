@@ -101,20 +101,29 @@ class LarvaPlate(QFrame):
         It also has buttons to easily change all wells to a specific state
     """
 
-    def __init__(self, plate_id, plate_type, control_unit, rows, columns):
+    def __init__(self, plate_id, initial_plate_type, control_unit):
         super().__init__()
-        self.plate_type = plate_type
-        self.plate_id, self.rows, self.cols = plate_id, rows, columns
+        self.plate_id = plate_id
+        self.control_unit = control_unit
         self.setFrameShape(QFrame.StyledPanel)
         self.setStyleSheet("QFrame { background-color: #ffffff; border-radius: 10px; border: 1px solid #ccc; }")
 
         layout = QVBoxLayout()
         header_layout = QHBoxLayout()
-        title = QLabel(f"Matrix #{plate_id}")
-        title.setStyleSheet("color: #333333; font-weight: bold; border: none; font-size: 14px;")
+
+        self.title = QLabel(f"Matrix #{plate_id}")
+        self.title.setStyleSheet("color: #333333; font-weight: bold; border: none; font-size: 14px;")
 
         btn_box = QHBoxLayout()
         btn_box.setSpacing(5)
+
+        # --- NEW: Toggle Plate Type Button ---
+        self.btn_toggle_type = QPushButton()
+        self.btn_toggle_type.setFixedSize(115, 25)
+        self.btn_toggle_type.setStyleSheet(
+            "background-color: #8e44ad; color: white; border-radius: 4px; border: none; font-weight: bold; font-size: 11px;")
+        self.btn_toggle_type.clicked.connect(self.toggle_plate_type)
+        # -------------------------------------
 
         btn_calc = QPushButton("Calc")
         btn_calc.setFixedSize(50, 25)
@@ -134,23 +143,63 @@ class LarvaPlate(QFrame):
             "background-color: #bdc3c7; color: black; border-radius: 4px; border: none; font-weight: bold; font-size: 11px;")
         btn_dis.clicked.connect(lambda: self.set_plate_state(WellState.DISABLED))
 
+        # Add buttons to header layout
+        btn_box.addWidget(self.btn_toggle_type)
         btn_box.addWidget(btn_calc)
         btn_box.addWidget(btn_man)
         btn_box.addWidget(btn_dis)
 
-        header_layout.addWidget(title)
+        header_layout.addWidget(self.title)
         header_layout.addStretch()
         header_layout.addLayout(btn_box)
         layout.addLayout(header_layout)
 
-        grid_layout = QGridLayout()
-        grid_layout.setSpacing(4)
+        # Grid layout for the wells must be a class variable so we can clear it later
+        self.grid_layout = QGridLayout()
+        self.grid_layout.setSpacing(4)
+        layout.addLayout(self.grid_layout)
+
+        self.setLayout(layout)
+
+        # Initialize the wells for the first time
+        self.init_wells(initial_plate_type)
+
+    def init_wells(self, plate_type):
+        """
+        Clears the existing well grid and repopulates it based on the specified plate_type.
+        """
+        self.plate_type = plate_type
+
+        # Define dimensions and button text based on plate type
+        if self.plate_type == PlateType.PLATE48:
+            self.rows, self.cols = 6, 8
+            self.btn_toggle_type.setText("Switch to 24-Well")
+        else:
+            self.rows, self.cols = 4, 6
+            self.btn_toggle_type.setText("Switch to 48-Well")
+
+        # Update the title to show current dimension
+        self.title.setText(f"Matrix #{self.plate_id} ({self.plate_type.name})")
+
+        # 1. Clear existing well widgets from the layout
+        while self.grid_layout.count():
+            child = self.grid_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        # 2. Populate new well widgets
         for r in range(self.rows):
             for c in range(self.cols):
-                grid_layout.addWidget(LarvaWell(plate_id, r, c, control_unit), r, c)
+                self.grid_layout.addWidget(LarvaWell(self.plate_id, r, c, self.control_unit), r, c)
 
-        layout.addLayout(grid_layout)
-        self.setLayout(layout)
+    def toggle_plate_type(self):
+        """
+        Flips the plate type and reinitializes the wells.
+        """
+        if self.plate_type == PlateType.PLATE48:
+            self.init_wells(PlateType.PLATE24)
+        else:
+            self.init_wells(PlateType.PLATE48)
 
     def set_plate_state(self, new_state):
         """
@@ -158,7 +207,6 @@ class LarvaPlate(QFrame):
             :param new_state: State to change all the wells to.
             :return: VOID
         """
-
         print(f"[UI] Matrix PLATE Override: Setting all wells in plate {self.plate_id} to {new_state}")
         for well in self.findChildren(LarvaWell): well.set_state(new_state)
 
@@ -432,7 +480,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("ARIS - Larvae Feeding Control")
         self.setWindowIcon(QIcon("no_backround_icon.png"))
-        self.resize(1100, 700)
+        self.resize(1500, 700)
 
         self.control_unit = ControlUnit(dev_mode=DEV_MODE)
         self.bridge = ControlBridge(self.control_unit)
@@ -455,12 +503,13 @@ class MainWindow(QMainWindow):
         # Setup plates
         left_container = QWidget()
         left_layout = QVBoxLayout()
-        self.plate1 = LarvaPlate(1, PlateType.PLATE48, self.control_unit, 6, 8)
-        self.plate2 = LarvaPlate(2, PlateType.PLATE24, self.control_unit, 4, 6)
-        self.plate3 = LarvaPlate(3, PlateType.PLATE24, self.control_unit, 4, 6)
+
+        # Only 2 matrices, initialized purely by PlateType
+        self.plate1 = LarvaPlate(1, PlateType.PLATE48, self.control_unit)
+        self.plate2 = LarvaPlate(2, PlateType.PLATE24, self.control_unit)
+
         left_layout.addWidget(self.plate1)
         left_layout.addWidget(self.plate2)
-        left_layout.addWidget(self.plate3)
         left_container.setLayout(left_layout)
         scroll_area.setWidget(left_container)
 
@@ -471,8 +520,8 @@ class MainWindow(QMainWindow):
         self.schedule_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.schedule_list.customContextMenuRequested.connect(self.show_context_menu)
 
-        # Control panel (middle column). receives the other columns so it can modify them.
-        self.controls = ControlPanel(self.control_unit, self.schedule_list, [self.plate1, self.plate2, self.plate3])
+        # Control panel (middle column). Pass ONLY the 2 plates.
+        self.controls = ControlPanel(self.control_unit, self.schedule_list, [self.plate1, self.plate2])
 
         # Connect the status signal directly to the widget's refresh function
         self.bridge.status_changed.connect(self.controls.status_widget.refresh_status)
