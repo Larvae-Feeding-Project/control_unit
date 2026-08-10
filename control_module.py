@@ -9,6 +9,7 @@ import string
 # Subsystem imports
 from movement_driver import movement_driver
 from fluidics_system import fluidics_module
+from vision_system import vision_system_module
 
 # from cv_system import cv_module
 
@@ -44,7 +45,7 @@ class ControlUnit:
             if not self.dev_mode:
                 self.fluidics_module = fluidics_module.FluidicsDriver()
                 self.movement_module = movement_driver.MovementDriver()
-                self.vision_system = vision_system()
+                self.vision_system = vision_system_module.VisionDriver()
             pass
         except Exception as e:
             print(f"[CONTROL_UNIT]: One of the subsystem initiations failed!. EXITING!")
@@ -162,6 +163,7 @@ class ControlUnit:
     def _feeding_startup(self):
         """
                 Gets Aris ready for feeding. Moves the arm above container and then fills the tube
+            Turns the camera system on
             Future update will also heat up the arm
             :return: True when finished or else if something fails
         """
@@ -169,7 +171,12 @@ class ControlUnit:
         self.movement_module.move(z=100)
         if not self.movement_module.move(x=container_loc["X"], y=container_loc["Y"], z=container_loc["Z"],
                                          speed=3000): return False
+
+        # Fill the tube
         if not self.fluidics_module.fill_tube(): return False
+
+        # Start the vision system (start the camera)
+        if not self.vision_system.vision_system_startup(): return False
 
         time.sleep(4)
 
@@ -272,11 +279,13 @@ class ControlUnit:
 
     def _feeding_end(self):
         """
-            Finishes feeding operation of ARIS. Empties tube and then moves arm back to resting place (reset)
+            Finishes feeding operation of ARIS. Empties tube and then moves arm back to resting place (reset).
+            Also turns off the camera
             :return: True when finished or else if something fails
         """
         if not self.fluidics_module.clear_tube(): return False
         self.movement_module.reset()
+        self.vision_system.vision_system_turn_off()
         return True
 
     def execute_feeding(self, feeding):
