@@ -364,13 +364,15 @@ class ControlUnit:
 
         # Flag feeding functions to stop
         self.stop_event.set()
-
         # Hardware kills immediately
         if not self.dev_mode:
             if hasattr(self, 'movement_module'):
                 self.movement_module.emergency_stop()
             if hasattr(self, 'fluidics_module'):
                 self.fluidics_module.emergency_stop()
+            if hasattr(self, 'vision_system'):
+                self.vision_system.emergency_stop()
+
 
         # Update UI and backend status
         self._set_status(ControlStatus.STOPPING)
