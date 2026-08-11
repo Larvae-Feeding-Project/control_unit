@@ -219,7 +219,7 @@ class ControlUnit:
         matrix = f"MATRIX{matrix_index}"
         plate_type = plate["plate_type"]
         for well in wells_lst:
-
+            print(f"row: {well["row"]}, column: {well["col"]}")
             # Catch abort request
             if self.stop_event.is_set():
                 print(f"  -> Aborting matrix {matrix_index} loop due to STOP request.")
@@ -267,8 +267,10 @@ class ControlUnit:
                     return False
 
                 # Build the filename for the photo (e.g., MATRIX1_A0.jpg)
-                well_id = f"{matrix}_{INDEX_TO_LETTER[well['row']]}{well['col']}"
+                well_id = f"{matrix}_{INDEX_TO_LETTER[well['row']]}{str(int(well['col'])+1)}"
                 photo_path = exp_path / f"{well_id}.jpg"
+
+                time.sleep(1)
 
                 # Take photo
                 if not self.vision_system.take_photo(str(photo_path)):
@@ -327,7 +329,6 @@ class ControlUnit:
                 self._set_status(ControlStatus.IDLE)
                 return
 
-
             # Startup
             startup_success = False
             if self.stop_event.is_set():
@@ -337,7 +338,7 @@ class ControlUnit:
 
             # Feeding operation
             if startup_success and not self.stop_event.is_set():
-                self._feeding_operation(feeding)
+                self._feeding_operation(feeding, exp_path)
 
             # Evaluate finish process
             if self.stop_event.is_set():
