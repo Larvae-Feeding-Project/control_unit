@@ -10,6 +10,7 @@ import string
 from movement_driver import movement_driver
 from fluidics_system import fluidics_module
 from vision_system import vision_system_module
+from feeding_logger import FeedingLogger
 
 # from cv_system import cv_module
 
@@ -251,6 +252,10 @@ class ControlUnit:
                     print(f"  -> WARNING: Dispense failed")
                     return False
 
+                # Log this manual feeding (the amount is known, no photo is taken for manual wells)
+                self._log_well(matrix, INDEX_TO_LETTER[well["row"]], int(well["col"]) + 1,
+                               WellState.MANUAL, manual_amount)
+
                 # Move up to safe height before continuing
                 self.movement_module.move_to_well(matrix, plate_type, INDEX_TO_LETTER[well["row"]], well["col"],
                                                   SAFE_Z, speed=6000)
@@ -272,12 +277,47 @@ class ControlUnit:
 
                 time.sleep(1)
 
-                # Take photo
-                if not self.vision_system.take_photo(str(photo_path)):
+                # Take photo and remember whether it succeeded
+                photo_ok = self.vision_system.take_photo(str(photo_path))
+                if not photo_ok:
                     print(f"  -> WARNING: Vision system failure! Photo skipped for {well_id}.")
+
+                # Log this larva; no amount yet (calculated feeding isn't implemented),
+                # and the photo name is saved only if the photo succeeded
+                self._log_well(matrix, INDEX_TO_LETTER[well["row"]], int(well["col"]) + 1,
+                               WellState.CALCULATED, "", photo_path if photo_ok else None)  
 
         # Successful execution
         return True
+
+    def _log_well(self, matrix, letter, col_number, state, amount, photo_path=None):
+        """
+            Adds one row to the experiment's feeding_log.csv for a single larva.
+        :param matrix: matrix name (e.g. "MATRIX1")
+        :param letter: row letter of the well (e.g. "A")
+        :param col_number: column number of the well, starting from 1
+        :param state: WellState of the well (MANUAL or CALCULATED)
+        :param amount: amount of food in microliters ("" if nothing was dispensed)
+        :param photo_path: Path of the saved photo, or None if there is no photo
+        :return: None
+        """
+        f = self.current_feeding
+        self.feeding_logger.log_well(
+            # Empty name falls back to the same default used for the folder
+            experiment_name=f.get('experiment_name') or 'Unnamed_Experiment',
+            feed_id=f['id'],
+            # Planned time of the feeding (same for all larvae in this feeding)
+            scheduled_time=f['time'].strftime("%Y-%m-%d %H:%M"),
+            # Actual time this row was written
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            matrix=matrix,
+            well=f"{letter}{col_number}",
+            # Stable id that follows the same larva across all feedings
+            larva_id=f"{matrix}_{letter}{col_number}",
+            well_state=state.name,
+            amount_ul=amount,
+            # Only the file name, since the CSV sits next to the feed folders
+            photo_file=photo_path.name if photo_path else "")
 
     def _feeding_end(self):
         """
@@ -328,6 +368,11 @@ class ControlUnit:
                 print(f"[CONTROL_UNIT]: ERROR creating directory {exp_path}: {e}")
                 self._set_status(ControlStatus.IDLE)
                 return
+            
+            # Create the CSV logger for this experiment (one feeding_log.csv per experiment folder)
+            self.feeding_logger = FeedingLogger(exp_path.parent / "feeding_log_DO_NOT_OPEN.csv")
+            # Keep the current feeding data so _log_well can read the id, time and experiment name
+            self.current_feeding = feeding
 
             # Startup
             startup_success = False
@@ -350,6 +395,8 @@ class ControlUnit:
             else:
                 self._feeding_end()
                 print(f"\n⚡ ROBOT ENDED FEEDING")
+                # Feeding completed normally: refresh the copy the user can open
+                self.feeding_logger.update_view_copy()
 
             self.stop_event.clear()
             self._set_status(ControlStatus.IDLE)
