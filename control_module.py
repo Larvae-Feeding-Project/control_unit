@@ -358,7 +358,6 @@ class ControlUnit:
             print(f"\n⚡ ROBOT STARTING! Scheduled Time: {feeding['time']}")
 
             # Experiment Directory creation
-            # "or" (not a .get default) so an empty name from the UI also becomes 'Unnamed_Experiment'
             exp_name = feeding.get('experiment_name') or 'Unnamed_Experiment'
             base_dir_str = self.control_data.get("BASE_DATA_DIRECTORY", "")
             feed_id = feeding.get('id', 'unknown_id')
