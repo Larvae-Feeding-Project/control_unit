@@ -16,8 +16,9 @@ from feeding_logger import FeedingLogger
 
 SAFE_Z = 100.0
 INDEX_TO_LETTER = string.ascii_uppercase  # 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-TEMP_FEED_Z = 54.3 #for on bed feeding 47.4
+TEMP_FEED_Z = 54.3  # for on bed feeding 47.4
 WORK_Z = 150
+
 
 class ControlUnit:
     def __init__(self, dev_mode=False):
@@ -29,6 +30,9 @@ class ControlUnit:
         # Path to fluidics module directory
         base_dir = Path(__file__).resolve().parent
         data_path = base_dir / "control_data.json"
+
+        # Dedicated path for tracking the feed ID between launches
+        self.id_tracker_path = base_dir / "feed_id_tracker.json"
 
         # Open control data dict
         try:
@@ -44,8 +48,8 @@ class ControlUnit:
         self.dev_mode = dev_mode
         try:
             if not self.dev_mode:
-                self.fluidics_module = fluidics_module.FluidicsDriver()
                 self.movement_module = movement_driver.MovementDriver()
+                self.fluidics_module = fluidics_module.FluidicsDriver()
                 self.vision_system = vision_system_module.VisionDriver()
             pass
         except Exception as e:
@@ -54,7 +58,9 @@ class ControlUnit:
 
         self.status = ControlStatus.IDLE
         self.scheduled_feeds = []
-        self.feed_identifier = 1
+
+        # Load the saved feed identifier (defaults to 1 if it's the first time)
+        self.feed_identifier = self._load_feed_id()
         self.lock = threading.Lock()
 
         # Stop event
@@ -75,6 +81,25 @@ class ControlUnit:
 
         print(f"[CONTROL_UNIT]: ControlUnit initialized!")
 
+    def _load_feed_id(self):
+        """Loads the last used feed identifier from the tracker file."""
+        if self.id_tracker_path.exists():
+            try:
+                with open(self.id_tracker_path, "r") as file:
+                    tracker_data = json.load(file)
+                    return tracker_data.get("feed_identifier", 1)
+            except Exception as e:
+                print(f"[CONTROL_UNIT]: Error loading feed ID tracker: {e}")
+        return 1
+
+    def _save_feed_id(self):
+        """Saves the current feed identifier to persist between launches."""
+        try:
+            with open(self.id_tracker_path, "w") as file:
+                json.dump({"feed_identifier": self.feed_identifier}, file, indent=4)
+        except Exception as e:
+            print(f"[CONTROL_UNIT]: Error saving feed ID tracker: {e}")
+
     def add_feed_task(self, python_dt, percentage, manual_amount, snapshot_data, experiment_name=""):
         """
             Adds feeding to the schedule (and also updates the UI using a signal)
@@ -88,6 +113,9 @@ class ControlUnit:
         with self.lock:
             feed_id = self.feed_identifier
             self.feed_identifier += 1
+
+            # Save the newly incremented ID immediately to json
+            self._save_feed_id()
 
             feeding = {
                 'id': feed_id,
@@ -104,7 +132,7 @@ class ControlUnit:
         if self.on_task_added:
             time_str = python_dt.strftime("%Y-%m-%d %H:%M")
             display_name = experiment_name if experiment_name else "Unnamed"
-            display_text = f"Experiment Name: {display_name}\nFeeding ID: {feed_id}\nScheduled Time: {time_str} - {percentage}%"
+            display_text = f"Experiment Name: {display_name}\nFeeding ID: {feed_id}\nScheduled Time: {time_str}\n{percentage}%"
             self.on_task_added(feed_id, display_text)
 
         print(f"[CONTROL_UNIT]: added feeding {feed_id}:\n{feeding}")
@@ -220,7 +248,7 @@ class ControlUnit:
         matrix = f"MATRIX{matrix_index}"
         plate_type = plate["plate_type"]
         for well in wells_lst:
-            print(f"row: {well["row"]}, column: {well["col"]}")
+            print(f"row: {well['row']}, column: {well['col']}")
             # Catch abort request
             if self.stop_event.is_set():
                 print(f"  -> Aborting matrix {matrix_index} loop due to STOP request.")
@@ -272,7 +300,7 @@ class ControlUnit:
                     return False
 
                 # Build the filename for the photo (e.g., MATRIX1_A1.jpg)
-                well_id = f"{matrix}_{INDEX_TO_LETTER[well['row']]}{str(int(well['col'])+1)}"
+                well_id = f"{matrix}_{INDEX_TO_LETTER[well['row']]}{str(int(well['col']) + 1)}"
                 photo_path = exp_path / f"{well_id}.jpg"
 
                 time.sleep(1)
@@ -285,9 +313,9 @@ class ControlUnit:
                 # Log this larva; no amount yet (calculated feeding isn't implemented),
                 # and the photo name is saved only if the photo succeeded
                 self._log_well(matrix, INDEX_TO_LETTER[well["row"]], int(well["col"]) + 1,
-                               WellState.CALCULATED, "", photo_path if photo_ok else None)  
+                               WellState.CALCULATED, "", photo_path if photo_ok else None)
 
-        # Successful execution
+                # Successful execution
         return True
 
     def _log_well(self, matrix, letter, col_number, state, amount, photo_path=None, dx="", dy=""):
@@ -370,7 +398,7 @@ class ControlUnit:
                 print(f"[CONTROL_UNIT]: ERROR creating directory {exp_path}: {e}")
                 self._set_status(ControlStatus.IDLE)
                 return
-            
+
             # Create the CSV logger for this experiment (one feeding_log_DO_NOT_OPEN.csv per experiment folder)
             self.feeding_logger = FeedingLogger(exp_path.parent / "feeding_log_DO_NOT_OPEN.csv", exp_name)
             # Keep the current feeding data so _log_well can read the id and time.
@@ -423,7 +451,6 @@ class ControlUnit:
             if hasattr(self, 'vision_system'):
                 self.vision_system.emergency_stop()
 
-
         # Update UI and backend status
         self._set_status(ControlStatus.STOPPING)
 
@@ -454,7 +481,6 @@ class ControlUnit:
         Thread function that actually moves the arm and updates the status.
         """
 
-
         if self.dev_mode:
             direction = "DOWN" if self.arm_is_up else "UP"
             print(f"\n***DEV_MODE_ON*** ⚡ Moving arm {direction}...")
@@ -477,6 +503,3 @@ class ControlUnit:
             except Exception as e:
                 print(f"[CONTROL_UNIT]: Error moving arm: {e}")
                 self._set_status(ControlStatus.IDLE)
-
-        # Release the machine back to IDLE
-        #self._set_status(ControlStatus.IDLE)
