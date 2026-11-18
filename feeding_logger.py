@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 
 COLUMNS = ["feed_id", "scheduled_time", "timestamp", "matrix", "well",
-           "larva_id", "well_state", "dx", "dy", "amount_ul", "est_volume_mm3", "est_height_mm",
+           "larva_id", "well_state", "dx", "dy", "amount_ul", "est_volume_mm3", "est_area_mm2", "est_height_mm",
            "alive", "photo_path"]
 
 

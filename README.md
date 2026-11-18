@@ -38,7 +38,7 @@ Each experiment gets its own folder under `BASE_DATA_DIRECTORY`:
 
 | Column | Meaning |
 |---|---|
-| feed_id | Feeding number (restarts at 1 each time the program starts) |
+| feed_id | Feeding number; saved between runs in `feed_id_tracker.json`, so it keeps counting |
 | scheduled_time | Time chosen in the UI |
 | timestamp | Actual time the row was written |
 | matrix, well | Plate panel (MATRIX1-3) and well (e.g. A1) |
@@ -46,7 +46,7 @@ Each experiment gets its own folder under `BASE_DATA_DIRECTORY`:
 | well_state | MANUAL or CALCULATED |
 | dx, dy | Larva offset from the well center in mm (can be negative); empty until the vision analysis is implemented |
 | amount_ul | Food dispensed in microliters; empty for calculated wells for now |
-| est_volume_mm3, est_height_mm | Larva size estimate; empty for now |
+| est_volume_mm3, est_area_mm2, est_height_mm | Larva size estimate (volume, area in mm², height); empty for now |
 | alive | Empty (unknown) for now |
 | photo_path | Full path of the photo taken before feeding; empty if there is no photo |
 
