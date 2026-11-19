@@ -17,6 +17,7 @@ from feeding_logger import FeedingLogger
 SAFE_Z = 100.0
 INDEX_TO_LETTER = string.ascii_uppercase  # 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 TEMP_FEED_Z = 54.3  # for on bed feeding 47.4
+WELL_FLOOR_Z = 47.4
 WORK_Z = 150
 
 
@@ -212,28 +213,22 @@ class ControlUnit:
         return True
 
     def _feeding_operation(self, feeding, exp_path):
-        """
-            Runs the feeding process itself. Works plate by plate
-        :param feeding: The feeding data
-        :param exp_path: Pathlib object to the current experiment's data folder
-        :return: True when finished (errors in plates may have occurred)
-        """
-
         print(feeding)
         plates_lst = feeding["snapshot"]
         manual_amount = feeding["manual_amount"]
+        percentage = feeding["percent"]
         for matrix_index, plate in enumerate(plates_lst):
-            plate_success = self._feed_plate(plate, matrix_index + 1, manual_amount, exp_path)
+            plate_success = self._feed_plate(plate, matrix_index + 1, manual_amount, percentage, exp_path)
 
-            # Stop if stop event is on
-            if self.stop_event.is_set(): return False
+            if self.stop_event.is_set():
+                return False
 
             if not plate_success:
                 print(f"Problem with matrix{matrix_index + 1}, continuing to next plate")
 
         return True
 
-    def _feed_plate(self, plate, matrix_index, manual_amount, exp_path):
+    def _feed_plate(self, plate, matrix_index, manual_amount, percentage, exp_path):
         """
             Feeds of the specific plate.
         :param plate: plate snapshot - {'plate_id':int,
@@ -288,32 +283,61 @@ class ControlUnit:
                 self.movement_module.move_to_well(matrix, plate_type, INDEX_TO_LETTER[well["row"]], well["col"],
                                                   SAFE_Z, speed=6000)
 
-            # Calculated well
-            if well["state"] == WellState.CALCULATED:
-                # Move camera above larvae
-                if not self.movement_module.move_to_well_photo_position(matrix, plate_type,
-                                                                        INDEX_TO_LETTER[well["row"]], well["col"]):
-                    return False
+                # Calculated well
+                if well["state"] == WellState.CALCULATED:
+                    # 1. Move to photo position
+                    if not self.movement_module.move_to_well_photo_position(matrix, plate_type,
+                                                                            INDEX_TO_LETTER[well["row"]], well["col"]):
+                        return False
 
-                if self.stop_event.is_set():
-                    print(f"  -> Aborting matrix {matrix_index} loop due to STOP request.")
-                    return False
+                    if self.stop_event.is_set():
+                        print(f"  -> Aborting matrix {matrix_index} loop due to STOP request.")
+                        return False
 
-                # Build the filename for the photo (e.g., MATRIX1_A1.jpg)
-                well_id = f"{matrix}_{INDEX_TO_LETTER[well['row']]}{str(int(well['col']) + 1)}"
-                photo_path = exp_path / f"{well_id}.jpg"
+                    # 2. Take photo & 3. Analyze it
+                    well_id = f"{matrix}_{INDEX_TO_LETTER[well['row']]}{str(int(well['col']) + 1)}"
+                    photo_path = exp_path / f"{well_id}.jpg"
+                    time.sleep(1)
 
-                time.sleep(1)
+                    photo_ok = self.vision_system.take_photo(str(photo_path))
+                    larvae_data = self.vision_system.analyze_photo(str(photo_path)) if photo_ok else None
 
-                # Take photo and remember whether it succeeded
-                photo_ok = self.vision_system.take_photo(str(photo_path))
-                if not photo_ok:
-                    print(f"  -> WARNING: Vision system failure! Photo skipped for {well_id}.")
+                    if not larvae_data or larvae_data[1] <= 0.0:
+                        print(f"  -> WARNING: Photo/analysis failed or no larva detected for {well_id}.")
+                        self._log_well(matrix, INDEX_TO_LETTER[well["row"]], int(well["col"]) + 1,
+                                       WellState.CALCULATED, "", photo_path if photo_ok else None)
+                        continue
 
-                # Log this larva; no amount yet (calculated feeding isn't implemented),
-                # and the photo name is saved only if the photo succeeded
-                self._log_well(matrix, INDEX_TO_LETTER[well["row"]], int(well["col"]) + 1,
-                               WellState.CALCULATED, "", photo_path if photo_ok else None)
+                    (dx, dy), larvae_area, larvae_height = larvae_data
+                    feed_amount = round(larvae_area * (percentage / 100.0), 2)
+                    target_z = WELL_FLOOR_Z + larvae_height
+
+                    # 4. Move to feeding position based on analysis
+                    if not self.movement_module.move_to_well(matrix, plate_type, INDEX_TO_LETTER[well["row"]],
+                                                             well["col"],
+                                                             SAFE_Z, delta_x=dy, delta_y=dx):
+                        return False
+
+                    if self.stop_event.is_set():
+                        return False
+
+                    if not self.movement_module.move_to_well(matrix, plate_type, INDEX_TO_LETTER[well["row"]],
+                                                             well["col"],
+                                                             target_z, delta_x=dy, delta_y=dx):
+                        return False
+
+                    # 5. Feed
+                    print(f"  -> Dispensing {feed_amount}uL...")
+                    if not self.fluidics_module.output(feed_amount):
+                        print(f"  -> WARNING: Dispense failed")
+                        return False
+
+                    self._log_well(matrix, INDEX_TO_LETTER[well["row"]], int(well["col"]) + 1,
+                                   WellState.CALCULATED, feed_amount, photo_path, dx=dx, dy=dy)
+
+                    # 6. Go to safe distance
+                    self.movement_module.move_to_well(matrix, plate_type, INDEX_TO_LETTER[well["row"]], well["col"],
+                                                      SAFE_Z)
 
                 # Successful execution
         return True
