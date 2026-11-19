@@ -17,7 +17,7 @@ from feeding_logger import FeedingLogger
 SAFE_Z = 100.0
 INDEX_TO_LETTER = string.ascii_uppercase  # 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 TEMP_FEED_Z = 54.3  # for on bed feeding 47.4
-WELL_FLOOR_Z = 47.4
+WELL_FLOOR_Z = 45.9
 WORK_Z = 150
 
 
