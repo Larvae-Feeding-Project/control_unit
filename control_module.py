@@ -15,8 +15,8 @@ from feeding_logger import FeedingLogger
 
 SAFE_Z = 100.0
 INDEX_TO_LETTER = string.ascii_uppercase  # 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-TEMP_FEED_Z = 54.3  # for on bed feeding 47.4
-WELL_FLOOR_Z = 45.9
+TEMP_FEED_Z = 46 # 43  # for on bed feeding 47.4
+WELL_FLOOR_Z =  47.3 #45.9 for connector
 WORK_Z = 150
 SAFETY_HEIGHT_MARGIN = 0.3
 
@@ -204,6 +204,14 @@ class ControlUnit:
 
         # Fill the tube
         if not self.fluidics_module.fill_tube(): return False
+
+        if not self.movement_module.move(z=TEMP_FEED_Z): return False
+        dispense_success = self.fluidics_module.output(10)
+        if not dispense_success:
+            print(f"  -> WARNING: startup dispension failed")
+            return False
+
+        if not self.movement_module.move(z=SAFE_Z): return False
 
         # Start the vision system (start the camera)
         if not self.vision_system.vision_system_startup(): return False
